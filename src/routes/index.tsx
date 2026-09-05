@@ -1,24 +1,109 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Navbar } from "@/components/site/Navbar";
+import { Hero } from "@/components/site/Hero";
+import { TrustBadges } from "@/components/site/TrustBadges";
+import { CategorySection } from "@/components/site/CategorySection";
+import { About } from "@/components/site/About";
+import { Testimonials } from "@/components/site/Testimonials";
+import { InstagramGallery } from "@/components/site/InstagramGallery";
+import { Newsletter } from "@/components/site/Newsletter";
+import { Faq, faqs } from "@/components/site/Faq";
+import { Footer } from "@/components/site/Footer";
+import { WhatsAppButton } from "@/components/site/WhatsAppButton";
+import { categories, WHATSAPP_NUMBER } from "@/data/products";
 
-// No head() here: the home route inherits title/description/og/twitter from
-// __root.tsx, and ships no og:image so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
+const title = "SimplyClassy | Authentic Watches, Sneakers & Perfumes in Ghana";
+const description =
+  "SimplyClassy is your home for authentic wrist watches, Nike Mind001 sneakers and long-lasting designer perfumes. Affordable luxury delivered nationwide in Ghana.";
+
+const organizationSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "SimplyClassy",
+  description,
+  areaServed: "GH",
+  address: { "@type": "PostalAddress", addressCountry: "GH", addressLocality: "Accra" },
+  contactPoint: {
+    "@type": "ContactPoint",
+    telephone: `+${WHATSAPP_NUMBER}`,
+    contactType: "sales",
+    areaServed: "GH",
+    availableLanguage: "English",
+  },
+};
+
+const productSchema = {
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  itemListElement: categories.flatMap((c) =>
+    c.products.map((p, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      item: {
+        "@type": "Product",
+        name: p.name,
+        category: c.title,
+        brand: { "@type": "Brand", name: "SimplyClassy" },
+        offers: {
+          "@type": "Offer",
+          price: p.price,
+          priceCurrency: "GHS",
+          availability: "https://schema.org/InStock",
+        },
+      },
+    })),
+  ),
+};
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: faqs.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
 export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      { title },
+      { name: "description", content: description },
+      { property: "og:title", content: title },
+      { property: "og:description", content: description },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: "/" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+    links: [{ rel: "canonical", href: "/" }],
+    scripts: [
+      { type: "application/ld+json", children: JSON.stringify(organizationSchema) },
+      { type: "application/ld+json", children: JSON.stringify(productSchema) },
+      { type: "application/ld+json", children: JSON.stringify(faqSchema) },
+    ],
+  }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
   return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
+    <div className="min-h-screen bg-background">
+      <Navbar />
+      <main>
+        <Hero />
+        <TrustBadges />
+        {categories.map((c) => (
+          <CategorySection key={c.id} category={c} />
+        ))}
+        <About />
+        <Testimonials />
+        <InstagramGallery />
+        <Newsletter />
+        <Faq />
+      </main>
+      <Footer />
+      <WhatsAppButton />
     </div>
   );
 }
