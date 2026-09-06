@@ -21,15 +21,16 @@ export function ProductCard({ product }: { product: Product }) {
         )}
       </div>
       <div className="p-4">
-        <h3 className="text-base font-medium text-foreground">{product.name}</h3>
+        <h3 className="font-sans text-base font-medium text-foreground">{product.name}</h3>
         <p className="mt-1 text-sm font-semibold text-primary">{formatCedis(product.price)}</p>
         <a
           href={productWhatsAppLink(product.name)}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-primary/25 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-accent"
+          className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-whatsapp px-3 py-1.5 text-sm font-medium whitespace-nowrap text-background transition-opacity hover:opacity-90 sm:px-4 sm:py-2"
         >
-          Order on WhatsApp
+          <span className="sm:hidden">Order Now</span>
+          <span className="hidden sm:inline">Order on WhatsApp</span>
         </a>
       </div>
     </article>

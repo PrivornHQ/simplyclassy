@@ -13,6 +13,7 @@ import { WhatsAppButton } from "@/components/site/WhatsAppButton";
 import { categories, WHATSAPP_NUMBER } from "@/data/products";
 
 const title = "SimplyClassy | Authentic Watches, Sneakers & Perfumes in Ghana";
+
 const description =
   "SimplyClassy is your home for authentic wrist watches, Nike Mind001 sneakers and long-lasting designer perfumes. Affordable luxury delivered nationwide in Ghana.";
 
@@ -22,7 +23,11 @@ const organizationSchema = {
   name: "SimplyClassy",
   description,
   areaServed: "GH",
-  address: { "@type": "PostalAddress", addressCountry: "GH", addressLocality: "Accra" },
+  address: {
+    "@type": "PostalAddress",
+    addressCountry: "GH",
+    addressLocality: "Accra",
+  },
   contactPoint: {
     "@type": "ContactPoint",
     telephone: `+${WHATSAPP_NUMBER}`,
@@ -43,7 +48,10 @@ const productSchema = {
         "@type": "Product",
         name: p.name,
         category: c.title,
-        brand: { "@type": "Brand", name: "SimplyClassy" },
+        brand: {
+          "@type": "Brand",
+          name: "SimplyClassy",
+        },
         offers: {
           "@type": "Offer",
           price: p.price,
@@ -61,7 +69,10 @@ const faqSchema = {
   mainEntity: faqs.map((f) => ({
     "@type": "Question",
     name: f.q,
-    acceptedAnswer: { "@type": "Answer", text: f.a },
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: f.a,
+    },
   })),
 };
 
@@ -76,13 +87,35 @@ export const Route = createFileRoute("/")({
       { property: "og:url", content: "/" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
-    links: [{ rel: "canonical", href: "/" }],
+
+    links: [
+      {
+        rel: "canonical",
+        href: "/",
+      },
+      {
+        rel: "icon",
+        type: "image/png",
+        href: "/favicon.png",
+      },
+    ],
+
     scripts: [
-      { type: "application/ld+json", children: JSON.stringify(organizationSchema) },
-      { type: "application/ld+json", children: JSON.stringify(productSchema) },
-      { type: "application/ld+json", children: JSON.stringify(faqSchema) },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(organizationSchema),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(productSchema),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify(faqSchema),
+      },
     ],
   }),
+
   component: Index,
 });
 
@@ -90,18 +123,26 @@ function Index() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
+
       <main>
         <Hero />
+
         <TrustBadges />
+
         {categories.map((c) => (
-          <CategorySection key={c.id} category={c} />
+          <CategorySection
+            key={c.id}
+            category={c}
+          />
         ))}
+
         <About />
         <Testimonials />
         <InstagramGallery />
         <Newsletter />
         <Faq />
       </main>
+
       <Footer />
       <WhatsAppButton />
     </div>

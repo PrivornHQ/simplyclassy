@@ -25,7 +25,7 @@ export function Hero() {
               href={WHATSAPP_LINK}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-full border border-primary/30 px-7 py-3 text-sm font-medium text-primary transition-colors hover:bg-accent"
+              className="inline-flex items-center justify-center rounded-full bg-whatsapp px-7 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
             >
               Order on WhatsApp
             </a>

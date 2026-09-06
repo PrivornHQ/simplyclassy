@@ -31,16 +31,20 @@ export function InstagramGallery() {
 
         <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
           {posts.map((p, i) => (
-            <img
+            <div
               key={i}
-              src={p.src}
-              alt={p.alt}
-              width={900}
-              height={900}
-              loading="lazy"
-              decoding="async"
-              className="aspect-square w-full rounded-lg object-cover"
-            />
+              className="overflow-hidden rounded-xl border border-border bg-card shadow-soft"
+            >
+              <img
+                src={p.src}
+                alt={p.alt}
+                width={900}
+                height={900}
+                loading="lazy"
+                decoding="async"
+                className="aspect-square w-full object-cover"
+              />
+            </div>
           ))}
         </div>
       </div>

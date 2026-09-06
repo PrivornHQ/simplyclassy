@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import logoAsset from "@/assets/simplyclassy-logo.jpg.asset.json";
+import logoAsset from "@/assets/logo.png";
 
 const links = [
   { href: "#perfumes", label: "Perfumes" },
@@ -33,18 +33,26 @@ export function Navbar() {
         aria-label="Main navigation"
         className="section-shell flex h-16 items-center justify-between"
       >
-        <a href="#top" className="flex items-center gap-2.5">
-          <img
-            src={logoAsset.url}
-            alt="SimplyClassy logo"
-            width={36}
-            height={36}
-            className="size-9 rounded-md bg-white object-cover"
-          />
-          <span className="font-display text-xl font-semibold tracking-tight text-white">
-            Simply<span className="text-white/70">Classy</span>
-          </span>
-        </a>
+       <a
+  href="#top"
+  aria-label="SimplyClassy home"
+  className="flex min-w-0 items-center gap-0 sm:gap-1"
+>
+<span
+  className="relative size-12 shrink-0 overflow-hidden sm:size-14"
+  aria-hidden="true"
+>
+  <img
+    src={logoAsset}
+    alt=""
+    className="absolute left-1/2 top-1/2 size-[65px] max-w-none -translate-x-1/2 -translate-y-1/2 sm:size-[75px]"
+  />
+</span>
+
+  <span className="-ml-1 truncate font-display text-[1.25rem] font-semibold tracking-tight text-white sm:-ml-1.5 sm:text-[1.45rem]">
+    SimplyClassy
+  </span>
+</a>
 
         <ul className="hidden items-center gap-8 md:flex">
           {links.map((l) => (
