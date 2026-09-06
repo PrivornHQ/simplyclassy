@@ -29,7 +29,7 @@ export function Testimonials() {
 
         <div className="mt-8 grid gap-4 md:grid-cols-3 md:gap-6">
           {reviews.map((r) => (
-            <figure key={r.name} className="rounded-xl border border-border bg-card p-6 shadow-soft">
+            <figure key={r.name} className="rounded-xl border border-border bg-card p-6 shadow-card">
               <div className="flex gap-1 text-primary" aria-label="5 out of 5 stars">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star key={i} className="size-4 fill-current" aria-hidden />
