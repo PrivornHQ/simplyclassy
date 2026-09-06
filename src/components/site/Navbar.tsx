@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import logoAsset from "@/assets/simplyclassy-logo.jpg.asset.json";
 
 const links = [
   { href: "#perfumes", label: "Perfumes" },
@@ -32,8 +33,17 @@ export function Navbar() {
         aria-label="Main navigation"
         className="section-shell flex h-16 items-center justify-between"
       >
-        <a href="#top" className="font-display text-xl font-semibold tracking-tight text-white">
-          Simply<span className="text-white/70">Classy</span>
+        <a href="#top" className="flex items-center gap-2.5">
+          <img
+            src={logoAsset.url}
+            alt="SimplyClassy logo"
+            width={36}
+            height={36}
+            className="size-9 rounded-md bg-white object-cover"
+          />
+          <span className="font-display text-xl font-semibold tracking-tight text-white">
+            Simply<span className="text-white/70">Classy</span>
+          </span>
         </a>
 
         <ul className="hidden items-center gap-8 md:flex">
