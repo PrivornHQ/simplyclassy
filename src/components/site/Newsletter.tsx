@@ -65,7 +65,7 @@ export function Newsletter() {
                 </div>
                 <button
                   type="submit"
-                  className="w-full rounded-full bg-primary px-6 py-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                  className="w-full rounded-full border border-primary/20 bg-white px-6 py-3 text-sm font-medium text-primary transition-opacity hover:opacity-90"
                 >
                   Join the broadcast list
                 </button>

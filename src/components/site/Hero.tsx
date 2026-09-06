@@ -17,7 +17,7 @@ export function Hero() {
           <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="#perfumes"
-              className="inline-flex items-center justify-center rounded-full bg-primary px-7 py-3 text-sm font-medium text-primary-foreground shadow-soft transition-opacity hover:opacity-90"
+              className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-white px-7 py-3 text-sm font-medium text-primary shadow-soft transition-opacity hover:opacity-90"
             >
               Shop the collection
             </a>

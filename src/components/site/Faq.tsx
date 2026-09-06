@@ -24,7 +24,7 @@ export function Faq() {
 
         <dl className="mt-8 grid gap-4 md:grid-cols-3 md:gap-6">
           {faqs.map((f) => (
-            <div key={f.q} className="rounded-xl border border-border bg-card p-6 shadow-soft">
+            <div key={f.q} className="rounded-xl border border-border bg-card p-6 shadow-card">
               <dt className="text-base font-semibold text-foreground">{f.q}</dt>
               <dd className="mt-2 text-sm text-muted-foreground">{f.a}</dd>
             </div>

@@ -45,34 +45,35 @@
   --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --shadow-soft: 0 1px 2px oklch(0.3 0.02 60 / 0.04), 0 12px 32px -18px oklch(0.3 0.02 60 / 0.35);
   --shadow-lift: 0 18px 44px -22px oklch(0.3 0.02 60 / 0.45);
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 :root {
   --radius: 0.5rem;
-  --background: oklch(0.99 0.002 90);
-  --foreground: oklch(0.26 0.014 60);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.26 0.014 60);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.26 0.014 60);
-  --primary: oklch(0.38 0.048 55);
-  --primary-foreground: oklch(0.985 0.003 90);
-  --secondary: oklch(0.94 0.004 90);
-  --secondary-foreground: oklch(0.32 0.02 60);
-  --muted: oklch(0.955 0.003 90);
-  --muted-foreground: oklch(0.53 0.012 70);
-  --accent: oklch(0.92 0.015 70);
-  --accent-foreground: oklch(0.32 0.03 55);
+  --background: #ffffff;
+  --foreground: #18202f;
+  --card: #ffffff;
+  --card-foreground: #18202f;
+  --popover: #ffffff;
+  --popover-foreground: #18202f;
+  --primary: #18202f;
+  --primary-foreground: #ffffff;
+  --secondary: oklch(0.96 0.003 240);
+  --secondary-foreground: #18202f;
+  --muted: oklch(0.965 0.003 240);
+  --muted-foreground: oklch(0.46 0.02 255);
+  --accent: oklch(0.94 0.005 240);
+  --accent-foreground: #18202f;
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0.003 90);
-  --border: oklch(0.9 0.005 80);
-  --input: oklch(0.9 0.005 80);
-  --ring: oklch(0.38 0.048 55);
-  --coffee: oklch(0.38 0.048 55);
-  --coffee-light: oklch(0.52 0.058 58);
-  --ash: oklch(0.93 0.003 90);
-  --ash-deep: oklch(0.72 0.006 80);
-  --whatsapp: oklch(0.63 0.16 152);
+  --destructive-foreground: #ffffff;
+  --border: oklch(0.91 0.005 250);
+  --input: oklch(0.91 0.005 250);
+  --ring: #18202f;
+  --coffee: #18202f;
+  --coffee-light: oklch(0.4 0.03 255);
+  --ash: #ffffff;
+  --ash-deep: oklch(0.75 0.01 250);
+  --whatsapp: #18202f;
 }
 
 @layer base {
