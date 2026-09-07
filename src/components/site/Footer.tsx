@@ -44,7 +44,7 @@ export function Footer() {
               {
                 Icon: Instagram,
                 label: "Instagram",
-                href: "https://www.instagram.com/be_real_370?stkn=bTJ1ajNtOWQwN2s2&utm_source=ig_contact_invite",
+                href: "https://www.instagram.com/be_real_370",
               },
               { Icon: Facebook, label: "Facebook" },
               {
