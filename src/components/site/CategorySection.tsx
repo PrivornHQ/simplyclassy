@@ -16,7 +16,7 @@ export function CategorySection({ category }: { category: Category }) {
   const products = useMemo(() => {
     const list = [...category.products];
     if (sort === "price-asc") list.sort((a, b) => a.price - b.price);
-    if (sort === "newest") list.sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+    if (sort === "newest") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return list;
   }, [category.products, sort]);
 
@@ -51,11 +51,17 @@ export function CategorySection({ category }: { category: Category }) {
           </label>
         </div>
 
-        <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
-          {products.map((p) => (
-            <ProductCard key={p.id} product={p} />
-          ))}
-        </div>
+        {products.length === 0 ? (
+          <p className="mt-8 rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+            New pieces for this collection will appear here soon.
+          </p>
+        ) : (
+          <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
+            {products.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
