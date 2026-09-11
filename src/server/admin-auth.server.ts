@@ -3,7 +3,46 @@ import { getCookie, getRequest, setCookie, deleteCookie } from "@tanstack/react-
 const COOKIE_NAME = "sc_admin";
 const SESSION_MS = 1000 * 60 * 60 * 24 * 7;
 
-const env = (name: string) => (process.env[name] ?? "").trim();
+type AdminSecretName = "ADMIN_PASSWORD" | "ADMIN_SESSION_SECRET";
+
+type NetlifyEnv = {
+  get?: (key: string) => string | undefined;
+};
+
+type DenoEnv = {
+  env?: { get?: (key: string) => string | undefined };
+};
+
+/**
+ * Read server secrets at request time.
+ * Dynamic `process.env[name]` is empty on this project's Nitro/workerd runtime;
+ * Netlify Functions 2.0 expose values via `Netlify.env.get`.
+ */
+function env(name: AdminSecretName): string {
+  const processEnv = process.env as {
+    ADMIN_PASSWORD?: string;
+    ADMIN_SESSION_SECRET?: string;
+  };
+  const fromProcess =
+    name === "ADMIN_PASSWORD" ? processEnv.ADMIN_PASSWORD : processEnv.ADMIN_SESSION_SECRET;
+
+  const netlifyEnv = (globalThis as { Netlify?: { env?: NetlifyEnv } }).Netlify?.env;
+  const fromNetlify = netlifyEnv?.get?.(name);
+
+  const denoEnv = (globalThis as { Deno?: DenoEnv }).Deno?.env;
+  const fromDeno = denoEnv?.get?.(name);
+
+  const fromGlobal = (globalThis as Record<string, unknown>)[name];
+
+  const value =
+    (typeof fromProcess === "string" && fromProcess) ||
+    (typeof fromNetlify === "string" && fromNetlify) ||
+    (typeof fromDeno === "string" && fromDeno) ||
+    (typeof fromGlobal === "string" && fromGlobal) ||
+    "";
+
+  return value.trim();
+}
 
 const bytesToHex = (bytes: ArrayBuffer | Uint8Array) => {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -51,7 +90,7 @@ const cookieOptions = {
   httpOnly: true,
   sameSite: "lax" as const,
   path: "/",
-  secure: env("NODE_ENV") === "production",
+  secure: import.meta.env.PROD,
 };
 
 export async function verifyAdminPassword(password: string): Promise<boolean> {
