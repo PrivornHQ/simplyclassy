@@ -1,0 +1,10 @@
+# SimplyClassy on Netlify.
+# Nitro auto-detects the Netlify preset during CI. Do not pin a publish
+# directory here — keep the site's existing Netlify build settings.
+#
+# Required environment variables (Site settings → Environment variables):
+#   ADMIN_PASSWORD
+#   ADMIN_SESSION_SECRET   (32+ characters recommended)
+
+[build.environment]
+  NODE_VERSION = "22"
