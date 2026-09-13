@@ -1,7 +1,7 @@
 export const faqs = [
   {
     q: "What does SimplyClassy sell?",
-    a: "SimplyClassy sells authentic wrist watches, Nike Mind001 sneakers and long-lasting designer perfumes. In short: time, scent and style — affordable luxury for everyday wear and gifting.",
+    a: "SimplyClassy sells authentic wrist watches, Nike Mind001 Slides and long-lasting designer perfumes. In short: time, scent and style — affordable luxury for everyday wear and gifting.",
   },
   {
     q: "Does SimplyClassy deliver nationwide in Ghana?",

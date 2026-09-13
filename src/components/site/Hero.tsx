@@ -1,4 +1,4 @@
-import heroImage from "@/assets/hero.jpg";
+import heroImage from "@/assets/hero.jpeg";
 import { WHATSAPP_LINK } from "@/data/products";
 
 export function Hero() {
@@ -11,7 +11,7 @@ export function Hero() {
             SimplyClassy
           </h1>
           <p className="mt-4 max-w-xl text-base text-muted-foreground sm:text-lg">
-            Your home for authentic wrist watches, Nike Mind001 sneakers and long-lasting designer
+            Your home for authentic wrist watches, Nike Mind001 Slides and long-lasting designer
             perfumes. We sell time, scent and style — delivered nationwide in Ghana.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -35,7 +35,7 @@ export function Hero() {
         <div className="relative">
           <img
             src={heroImage}
-            alt="Authentic wrist watch, designer perfume and Nike Mind001 sneaker from SimplyClassy"
+            alt="Authentic wrist watch, designer perfume and Nike Mind001 Slides from SimplyClassy"
             width={1600}
             height={1008}
             fetchPriority="high"

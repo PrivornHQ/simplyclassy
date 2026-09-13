@@ -5,7 +5,7 @@ import logoAsset from "@/assets/logo.png";
 
 const links = [
   { href: "#perfumes", label: "Perfumes" },
-  { href: "#sneakers", label: "Sneakers" },
+  { href: "#sneakers", label: "Slides" },
   { href: "#watches", label: "Watches" },
   { href: "#about", label: "About" },
   { href: "#faq", label: "FAQ" },

@@ -9,7 +9,7 @@ const reviews = [
   {
     name: "Kwesi B.",
     city: "Kumasi",
-    text: "The Nike Mind001 sneakers are 100% authentic. Delivery to Kumasi took two days.",
+    text: "The Nike Mind001 Slides are 100% authentic. Delivery to Kumasi took two days.",
   },
   {
     name: "Nana Y.",

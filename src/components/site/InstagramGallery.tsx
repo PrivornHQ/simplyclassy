@@ -1,7 +1,7 @@
 import { Instagram } from "lucide-react";
-import placeholderPerfume from "@/assets/placeholder-perfume.jpg";
-import placeholderSneaker from "@/assets/placeholder-sneaker.jpg";
-import placeholderWatch from "@/assets/placeholder-watch.jpg";
+import placeholderPerfume from "@/assets/placeholder-perfume.jpeg";
+import placeholderSneaker from "@/assets/placeholder-sneaker.jpeg";
+import placeholderWatch from "@/assets/placeholder-watch.jpeg";
 
 /**
  * Instagram gallery placeholder.
@@ -12,7 +12,7 @@ const posts = [
   { src: placeholderPerfume, alt: "SimplyClassy designer perfume flat lay on Instagram" },
   { src: placeholderSneaker, alt: "Nike Mind001 sneakers from SimplyClassy on Instagram" },
   { src: placeholderPerfume, alt: "SimplyClassy perfume gift set on Instagram" },
-  { src: placeholderSneaker, alt: "SimplyClassy sneaker delivery in Ghana on Instagram" },
+  { src: placeholderSneaker, alt: "SimplyClassy slides delivery in Ghana on Instagram" },
   { src: placeholderWatch, alt: "SimplyClassy watch close-up on Instagram" },
 ];
 

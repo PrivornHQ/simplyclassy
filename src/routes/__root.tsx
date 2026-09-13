@@ -83,7 +83,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "SimplyClassy sells authentic wrist watches, Nike Mind001 sneakers and long-lasting designer perfumes. Affordable luxury delivered nationwide in Ghana.",
+          "SimplyClassy sells authentic wrist watches, Nike Mind001 Slides and long-lasting designer perfumes. Affordable luxury delivered nationwide in Ghana.",
       },
       { name: "author", content: "SimplyClassy" },
       { property: "og:site_name", content: "SimplyClassy" },
