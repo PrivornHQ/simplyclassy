@@ -39,7 +39,7 @@ export function AdminLogin({
         {!configured && (
           <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
             Admin access is not configured. Set ADMIN_PASSWORD (and optionally ADMIN_SESSION_SECRET)
-            in the Netlify environment, then redeploy.
+            in the Cloudflare Worker secrets, then redeploy.
           </p>
         )}
 
