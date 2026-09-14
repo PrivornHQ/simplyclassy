@@ -1,24 +1,33 @@
-import { getCookie, getRequest, setCookie, deleteCookie } from "@tanstack/react-start/server";
+import { deleteCookie, getCookie, setCookie } from "@tanstack/react-start/server";
+import { getRequest } from "@tanstack/start-server-core";
 
 const COOKIE_NAME = "sc_admin";
 const SESSION_MS = 1000 * 60 * 60 * 24 * 7;
 
 type AdminSecretName = "ADMIN_PASSWORD" | "ADMIN_SESSION_SECRET";
 
-type NetlifyEnv = {
-  get?: (key: string) => string | undefined;
-};
-
-type DenoEnv = {
-  env?: { get?: (key: string) => string | undefined };
+type RuntimeRequest = Request & {
+  runtime?: {
+    cloudflare?: {
+      env?: Partial<Record<AdminSecretName, unknown>>;
+    };
+  };
 };
 
 /**
  * Read server secrets at request time.
- * Dynamic `process.env[name]` is empty on this project's Nitro/workerd runtime;
- * Netlify Functions 2.0 expose values via `Netlify.env.get`.
+ * Cloudflare Worker secrets are exposed through Nitro's request runtime;
+ * process.env remains supported for local development.
  */
 function env(name: AdminSecretName): string {
+  let fromCloudflare: unknown;
+  try {
+    const request = getRequest() as RuntimeRequest;
+    fromCloudflare = request.runtime?.cloudflare?.env?.[name];
+  } catch {
+    fromCloudflare = undefined;
+  }
+
   const processEnv = process.env as {
     ADMIN_PASSWORD?: string;
     ADMIN_SESSION_SECRET?: string;
@@ -26,19 +35,9 @@ function env(name: AdminSecretName): string {
   const fromProcess =
     name === "ADMIN_PASSWORD" ? processEnv.ADMIN_PASSWORD : processEnv.ADMIN_SESSION_SECRET;
 
-  const netlifyEnv = (globalThis as { Netlify?: { env?: NetlifyEnv } }).Netlify?.env;
-  const fromNetlify = netlifyEnv?.get?.(name);
-
-  const denoEnv = (globalThis as { Deno?: DenoEnv }).Deno?.env;
-  const fromDeno = denoEnv?.get?.(name);
-
-  const fromGlobal = (globalThis as Record<string, unknown>)[name];
-
   const value =
+    (typeof fromCloudflare === "string" && fromCloudflare) ||
     (typeof fromProcess === "string" && fromProcess) ||
-    (typeof fromNetlify === "string" && fromNetlify) ||
-    (typeof fromDeno === "string" && fromDeno) ||
-    (typeof fromGlobal === "string" && fromGlobal) ||
     "";
 
   return value.trim();
