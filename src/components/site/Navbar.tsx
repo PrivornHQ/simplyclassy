@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logoAsset from "@/assets/logo.png";
+import { OrderCartTrigger } from "./OrderCart";
 
 const links = [
   { href: "#perfumes", label: "Perfumes" },
@@ -75,6 +76,7 @@ export function Navbar() {
           >
             Join the list
           </a>
+          <OrderCartTrigger />
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}

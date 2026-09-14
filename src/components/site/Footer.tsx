@@ -1,5 +1,4 @@
 import { Instagram, Facebook, Music2, Phone, Mail, MapPin } from "lucide-react";
-import { WHATSAPP_LINK } from "@/data/products";
 
 export function Footer() {
   return (
@@ -20,9 +19,7 @@ export function Footer() {
           <ul className="mt-3 space-y-2 text-sm text-white/70">
             <li className="flex items-center gap-2">
               <Phone className="size-4 text-white" aria-hidden />
-              <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                WhatsApp +233 24 395 4370
-              </a>
+              <span>WhatsApp +233 24 395 4370</span>
             </li>
             <li className="flex items-center gap-2">
               <Mail className="size-4 text-white" aria-hidden />

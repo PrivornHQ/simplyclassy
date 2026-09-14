@@ -206,21 +206,37 @@ export const seedProducts: Product[] = [
 ];
 
 export const WHATSAPP_NUMBER = "233243954370";
-export const WHATSAPP_LINK =
-  "https://wa.me/233243954370?text=" +
-  encodeURIComponent("Hi, I'm interested in a product from SimplyClassy");
 
 export const formatCedis = (value: number) => `₵${value.toLocaleString("en-GH")}`;
 
-export const productWhatsAppLink = (product: Product, imageUrl: string) => {
-  const category = categoryById(product.category).title;
+export type WhatsAppOrderLine = {
+  name: string;
+  price: number;
+  quantity: number;
+};
+
+export const formatWhatsAppCedis = (value: number) => `GHS ${value.toLocaleString("en-GH")}`;
+
+export const orderWhatsAppLink = (items: WhatsAppOrderLine[]) => {
+  const lines = items.flatMap((item, index) => {
+    const quantity = Math.max(1, item.quantity);
+    const lineTotal = item.price * quantity;
+
+    return [
+      `${index + 1}. ${item.name}`,
+      `Qty: ${quantity}`,
+      `Price: ${formatWhatsAppCedis(item.price)}`,
+      `Subtotal: ${formatWhatsAppCedis(lineTotal)}`,
+      "",
+    ];
+  });
+
+  const total = items.reduce((sum, item) => sum + item.price * Math.max(1, item.quantity), 0);
   const message = [
-    "Hi SimplyClassy, I'd like to order this product:",
+    "Hi SimplyClassy, I'd like to order:",
     "",
-    `Product: ${product.name}`,
-    `Price: ${formatCedis(product.price)}`,
-    `Category: ${category}`,
-    `Image: ${imageUrl}`,
+    ...lines,
+    `Total: ${formatWhatsAppCedis(total)}`,
   ].join("\n");
 
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;

@@ -1,17 +1,18 @@
-import { MessageCircle } from "lucide-react";
-import { WHATSAPP_LINK } from "@/data/products";
+import { ShoppingBag } from "lucide-react";
+import { useOrderCart } from "./OrderCart";
 
 export function WhatsAppButton() {
+  const { itemCount, setOpen } = useOrderCart();
+
   return (
-    <a
-      href={WHATSAPP_LINK}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="Chat with SimplyClassy on WhatsApp"
+    <button
+      type="button"
+      onClick={() => setOpen(true)}
+      aria-label={`Open order summary with ${itemCount} item${itemCount === 1 ? "" : "s"}`}
       className="fixed right-4 bottom-4 z-50 inline-flex items-center gap-2 rounded-full bg-whatsapp px-4 py-3 text-sm font-medium text-background shadow-lift transition-transform hover:scale-105"
     >
-      <MessageCircle className="size-5" aria-hidden />
-      <span className="hidden sm:inline">Chat on WhatsApp</span>
-    </a>
+      <ShoppingBag className="size-5" aria-hidden />
+      <span className="hidden sm:inline">Order ({itemCount})</span>
+    </button>
   );
 }

@@ -9,7 +9,7 @@ export const faqs = [
   },
   {
     q: "How do I contact SimplyClassy?",
-    a: "Message SimplyClassy on WhatsApp at +233 24 395 4370. Tap any \"Order on WhatsApp\" button on this page and your message opens ready to send.",
+    a: "Add your pieces to an order, review the summary, then tap \"Order on WhatsApp\" and your message opens ready to send.",
   },
 ];
 

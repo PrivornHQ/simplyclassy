@@ -1,7 +1,9 @@
 import heroImage from "@/assets/hero.jpeg";
-import { WHATSAPP_LINK } from "@/data/products";
+import { useOrderCart } from "./OrderCart";
 
 export function Hero() {
+  const { setOpen } = useOrderCart();
+
   return (
     <section id="top" className="relative overflow-hidden bg-ash pt-24 pb-14 md:pt-32 md:pb-24">
       <div className="section-shell grid items-center gap-10 md:grid-cols-2 md:gap-14">
@@ -21,14 +23,13 @@ export function Hero() {
             >
               Shop the collection
             </a>
-            <a
-              href={WHATSAPP_LINK}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
               className="inline-flex items-center justify-center rounded-full bg-whatsapp px-7 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
             >
-              Order on WhatsApp
-            </a>
+              View Order
+            </button>
           </div>
         </div>
 

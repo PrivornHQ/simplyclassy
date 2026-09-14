@@ -1,26 +1,27 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
-import { formatCedis, productWhatsAppLink, type Product } from "@/data/products";
+import { useState, type MouseEvent } from "react";
+import { toast } from "sonner";
+import { formatCedis, type Product } from "@/data/products";
 import { cn } from "@/lib/utils";
+import { useOrderCart } from "./OrderCart";
 
 export function ProductCard({ product }: { product: Product }) {
   const [expanded, setExpanded] = useState(false);
-  const [origin, setOrigin] = useState("");
+  const [justAdded, setJustAdded] = useState(false);
+  const { addProduct } = useOrderCart();
   const description = product.description?.trim();
   const hasDescription = Boolean(description);
-  const productImageUrl = useMemo(() => {
-    if (/^https?:\/\//i.test(product.image)) return product.image;
-    if (!origin) return product.image;
-    return new URL(product.image, origin).toString();
-  }, [origin, product.image]);
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
 
   const toggleDescription = (event: MouseEvent<HTMLElement>) => {
     if (!hasDescription) return;
     if ((event.target as HTMLElement).closest("a,button")) return;
     setExpanded((current) => !current);
+  };
+
+  const addToOrder = () => {
+    addProduct(product);
+    setJustAdded(true);
+    toast.success(`${product.name} added to your order.`);
+    window.setTimeout(() => setJustAdded(false), 1200);
   };
 
   return (
@@ -66,15 +67,16 @@ export function ProductCard({ product }: { product: Product }) {
         )}
         <div className="mt-auto pt-3">
           {product.available ? (
-            <a
-              href={productWhatsAppLink(product, productImageUrl)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex w-full items-center justify-center rounded-full bg-whatsapp px-3 py-1.5 text-sm font-medium whitespace-nowrap text-background transition-opacity hover:opacity-90 sm:px-4 sm:py-2"
+            <button
+              type="button"
+              onClick={addToOrder}
+              className={cn(
+                "inline-flex w-full items-center justify-center rounded-full bg-whatsapp px-3 py-1.5 text-sm font-medium whitespace-nowrap text-background transition-all hover:opacity-90 sm:px-4 sm:py-2",
+                justAdded && "scale-[0.98] bg-primary/90",
+              )}
             >
-              <span className="sm:hidden">Order Now</span>
-              <span className="hidden sm:inline">Order on WhatsApp</span>
-            </a>
+              {justAdded ? "Added" : "Add to Order"}
+            </button>
           ) : (
             <p className="inline-flex w-full items-center justify-center rounded-full border border-border px-3 py-1.5 text-sm font-medium text-muted-foreground sm:px-4 sm:py-2">
               Currently unavailable
