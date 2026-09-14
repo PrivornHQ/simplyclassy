@@ -21,6 +21,15 @@ import { cn } from "@/lib/utils";
 import { ProductForm, type ProductFormValues } from "./ProductForm";
 
 type Mode = { type: "list" } | { type: "form"; product: Product | null };
+type AdminFilter = "all" | CategoryId | "reviews";
+
+const adminFilters: { id: AdminFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "sneakers", label: "Slides" },
+  { id: "watches", label: "Watches" },
+  { id: "perfumes", label: "Perfumes" },
+  { id: "reviews", label: "Reviews" },
+];
 
 export function AdminDashboard({
   products,
@@ -38,7 +47,7 @@ export function AdminDashboard({
   onLogout: () => Promise<void>;
 }) {
   const [mode, setMode] = useState<Mode>({ type: "list" });
-  const [filter, setFilter] = useState<"all" | CategoryId>("all");
+  const [filter, setFilter] = useState<AdminFilter>("all");
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
@@ -46,9 +55,13 @@ export function AdminDashboard({
   const [pendingReviewDelete, setPendingReviewDelete] = useState<CustomerReview | null>(null);
 
   const visible = useMemo(
-    () => (filter === "all" ? products : products.filter((p) => p.category === filter)),
+    () =>
+      filter === "all" || filter === "reviews"
+        ? products
+        : products.filter((p) => p.category === filter),
     [filter, products],
   );
+  const showingReviews = filter === "reviews";
 
   const save = async (values: ProductFormValues) => {
     const form = new FormData();
@@ -140,26 +153,31 @@ export function AdminDashboard({
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
-                {products.length === 0
-                  ? "No products yet."
-                  : `${products.length} product${products.length === 1 ? "" : "s"} in the catalogue.`}
+                {showingReviews
+                  ? reviews.length === 0
+                    ? "No reviews yet."
+                    : `${reviews.length} review${reviews.length === 1 ? "" : "s"}.`
+                  : products.length === 0
+                    ? "No products yet."
+                    : `${products.length} product${products.length === 1 ? "" : "s"} in the catalogue.`}
               </p>
-              <Button
-                className="rounded-full"
-                onClick={() => setMode({ type: "form", product: null })}
-              >
-                Add product
-              </Button>
+              {!showingReviews && (
+                <Button
+                  className="rounded-full"
+                  onClick={() => setMode({ type: "form", product: null })}
+                >
+                  Add product
+                </Button>
+              )}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              <FilterChip active={filter === "all"} onClick={() => setFilter("all")} label="All" />
-              {categories.map((c) => (
+              {adminFilters.map((item) => (
                 <FilterChip
-                  key={c.id}
-                  active={filter === c.id}
-                  onClick={() => setFilter(c.id)}
-                  label={c.title}
+                  key={item.id}
+                  active={filter === item.id}
+                  onClick={() => setFilter(item.id)}
+                  label={item.label}
                 />
               ))}
             </div>
@@ -174,7 +192,7 @@ export function AdminDashboard({
               </div>
             )}
 
-            {!loading && !error && visible.length === 0 && (
+            {!showingReviews && !loading && !error && visible.length === 0 && (
               <p className="mt-8 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                 {products.length === 0
                   ? "The catalogue is empty. Add your first product to get started."
@@ -182,6 +200,7 @@ export function AdminDashboard({
               </p>
             )}
 
+            {!showingReviews && (
             <ul className="mt-6 grid gap-4">
               {visible.map((product) => (
                 <li
@@ -221,8 +240,10 @@ export function AdminDashboard({
                 </li>
               ))}
             </ul>
+            )}
 
-            <section className="mt-12">
+            {showingReviews && (
+            <section className="mt-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="eyebrow">Reviews</p>
@@ -310,6 +331,7 @@ export function AdminDashboard({
                 </ul>
               )}
             </section>
+            )}
           </>
         )}
       </main>
