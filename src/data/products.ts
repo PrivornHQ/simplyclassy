@@ -1,7 +1,7 @@
 /**
  * Product catalogue types and category metadata for SimplyClassy.
  *
- * Live product records are persisted on the server (Netlify Blobs in production).
+ * Live product records are persisted on the server (Cloudflare KV in production).
  * Seeded products below are migrated into that store on first load.
  */
 export type ProductBadge = "New Arrival" | "Best Seller" | null;
