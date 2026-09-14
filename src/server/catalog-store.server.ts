@@ -1,7 +1,8 @@
 import type { Product } from "@/data/products";
 import { isCategoryId, seedProducts } from "@/data/products";
+import { getRequest } from "@tanstack/start-server-core";
 
-const STORE_NAME = "simplyclassy-catalog";
+const CATALOG_KV_BINDING = "simplyclassy_catalog";
 const PRODUCTS_KEY = "products.json";
 
 type StoredImage = {
@@ -23,57 +24,76 @@ let seedLock: Promise<void> | undefined;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const env = (name: string) => (process.env[name] ?? "").trim();
+type KVImageMetadata = {
+  contentType?: unknown;
+};
 
-const canUseNetlifyBlobs = () =>
-  Boolean(
-    env("NETLIFY_BLOBS_CONTEXT") ||
-    env("NETLIFY") ||
-    (env("NETLIFY_SITE_ID") &&
-      (env("NETLIFY_BLOBS_TOKEN") || env("NETLIFY_TOKEN") || env("NETLIFY_AUTH_TOKEN"))),
-  );
+type CatalogKVNamespace = {
+  get: {
+    (key: string, options: { type: "text" }): Promise<string | null>;
+    (key: string, options: { type: "arrayBuffer" }): Promise<ArrayBuffer | null>;
+  };
+  getWithMetadata: <TMetadata extends Record<string, unknown>>(
+    key: string,
+    options: { type: "arrayBuffer" },
+  ) => Promise<{ value: ArrayBuffer | null; metadata: TMetadata | null }>;
+  put: (
+    key: string,
+    value: string | ArrayBuffer | ArrayBufferView,
+    options?: { metadata?: Record<string, unknown> },
+  ) => Promise<void>;
+  delete: (key: string) => Promise<void>;
+};
 
-async function createNetlifyPersistence(): Promise<CatalogPersistence | null> {
-  const onNetlify = Boolean(env("NETLIFY") || env("NETLIFY_BLOBS_CONTEXT"));
-  if (!canUseNetlifyBlobs()) return null;
-
-  try {
-    const { getStore } = await import("@netlify/blobs");
-    const store = getStore({ name: STORE_NAME, consistency: "strong" });
-
-    return {
-      async getText(key) {
-        try {
-          const value = await store.get(key, { type: "text" });
-          return value ? value : null;
-        } catch {
-          return null;
-        }
-      },
-      async setText(key, value) {
-        await store.set(key, value, { metadata: { contentType: "application/json" } });
-      },
-      async getBytes(key) {
-        const result = await store.getWithMetadata(key, { type: "arrayBuffer" });
-        if (!result?.data) return null;
-        const contentType =
-          typeof result.metadata["contentType"] === "string"
-            ? result.metadata["contentType"]
-            : "application/octet-stream";
-        return { data: new Uint8Array(result.data), contentType };
-      },
-      async setBytes(key, data, contentType) {
-        await store.set(key, new Blob([data as BlobPart]), { metadata: { contentType } });
-      },
-      async deleteKey(key) {
-        await store.delete(key);
-      },
+type RuntimeRequest = Request & {
+  runtime?: {
+    cloudflare?: {
+      env?: Record<string, unknown>;
     };
-  } catch (error) {
-    if (onNetlify) throw error;
-    console.warn("Netlify Blobs unavailable; using local file catalog store.", error);
+  };
+};
+
+const isCatalogKVNamespace = (value: unknown): value is CatalogKVNamespace =>
+  isRecord(value) &&
+  typeof value.get === "function" &&
+  typeof value.getWithMetadata === "function" &&
+  typeof value.put === "function" &&
+  typeof value.delete === "function";
+
+function getCatalogKVBinding(): CatalogKVNamespace | null {
+  try {
+    const request = getRequest() as RuntimeRequest;
+    const binding = request.runtime?.cloudflare?.env?.[CATALOG_KV_BINDING];
+    return isCatalogKVNamespace(binding) ? binding : null;
+  } catch {
     return null;
   }
+}
+
+function createCloudflareKVPersistence(kv: CatalogKVNamespace): CatalogPersistence {
+  return {
+    async getText(key) {
+      return kv.get(key, { type: "text" });
+    },
+    async setText(key, value) {
+      await kv.put(key, value, { metadata: { contentType: "application/json" } });
+    },
+    async getBytes(key) {
+      const result = await kv.getWithMetadata<KVImageMetadata>(key, { type: "arrayBuffer" });
+      if (!result.value) return null;
+      const contentType =
+        typeof result.metadata?.contentType === "string"
+          ? result.metadata.contentType
+          : "application/octet-stream";
+      return { data: new Uint8Array(result.value), contentType };
+    },
+    async setBytes(key, data, contentType) {
+      await kv.put(key, data, { metadata: { contentType } });
+    },
+    async deleteKey(key) {
+      await kv.delete(key);
+    },
+  };
 }
 
 async function createFilePersistence(): Promise<CatalogPersistence> {
@@ -127,8 +147,8 @@ async function createFilePersistence(): Promise<CatalogPersistence> {
 async function getPersistence(): Promise<CatalogPersistence> {
   if (!persistencePromise) {
     persistencePromise = (async () => {
-      const blobs = await createNetlifyPersistence();
-      return blobs ?? createFilePersistence();
+      const kv = getCatalogKVBinding();
+      return kv ? createCloudflareKVPersistence(kv) : createFilePersistence();
     })();
   }
   return persistencePromise;
