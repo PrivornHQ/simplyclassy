@@ -4,7 +4,9 @@ import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { AdminLogin } from "@/components/admin/AdminLogin";
 import { getAdminAuthState, loginAdmin, logoutAdmin } from "@/lib/admin-auth.functions";
 import { listAdminProducts } from "@/lib/catalog.functions";
+import { listAdminReviews } from "@/lib/review.functions";
 import type { Product } from "@/data/products";
+import type { CustomerReview } from "@/data/reviews";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -28,15 +30,20 @@ function AdminPage() {
   const [configured, setConfigured] = useState(initial.configured);
   const [authenticated, setAuthenticated] = useState(initial.authenticated);
   const [products, setProducts] = useState<Product[]>([]);
+  const [reviews, setReviews] = useState<CustomerReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshProducts = useCallback(async () => {
+  const refreshAdminData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const next = await listAdminProducts();
-      setProducts(next);
+      const [nextProducts, nextReviews] = await Promise.all([
+        listAdminProducts(),
+        listAdminReviews(),
+      ]);
+      setProducts(nextProducts);
+      setReviews(nextReviews);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Couldn't load products.";
       if (message === "Unauthorized") {
@@ -51,8 +58,8 @@ function AdminPage() {
 
   useEffect(() => {
     if (!authenticated) return;
-    void refreshProducts();
-  }, [authenticated, refreshProducts]);
+    void refreshAdminData();
+  }, [authenticated, refreshAdminData]);
 
   if (!authenticated) {
     return (
@@ -74,13 +81,15 @@ function AdminPage() {
   return (
     <AdminDashboard
       products={products}
+      reviews={reviews}
       loading={loading}
       error={error}
-      onRefresh={refreshProducts}
+      onRefresh={refreshAdminData}
       onLogout={async () => {
         await logoutAdmin();
         setAuthenticated(false);
         setProducts([]);
+        setReviews([]);
       }}
     />
   );

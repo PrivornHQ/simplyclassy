@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { Star } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,19 +14,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { categories, formatCedis, type CategoryId, type Product } from "@/data/products";
+import type { CustomerReview } from "@/data/reviews";
 import { deleteAdminProduct, saveAdminProduct } from "@/lib/catalog.functions";
+import { deleteAdminReview } from "@/lib/review.functions";
+import { cn } from "@/lib/utils";
 import { ProductForm, type ProductFormValues } from "./ProductForm";
 
 type Mode = { type: "list" } | { type: "form"; product: Product | null };
 
 export function AdminDashboard({
   products,
+  reviews,
   loading,
   error,
   onRefresh,
   onLogout,
 }: {
   products: Product[];
+  reviews: CustomerReview[];
   loading: boolean;
   error: string | null;
   onRefresh: () => Promise<void>;
@@ -36,6 +42,8 @@ export function AdminDashboard({
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+  const [pendingReviewDelete, setPendingReviewDelete] = useState<CustomerReview | null>(null);
 
   const visible = useMemo(
     () => (filter === "all" ? products : products.filter((p) => p.category === filter)),
@@ -80,6 +88,22 @@ export function AdminDashboard({
       toast.error(err instanceof Error ? err.message : "Couldn't delete the product.");
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const confirmReviewDelete = async () => {
+    if (!pendingReviewDelete) return;
+    const id = pendingReviewDelete.id;
+    setDeletingReviewId(id);
+    try {
+      await deleteAdminReview({ data: { id } });
+      toast.success("Review deleted.");
+      setPendingReviewDelete(null);
+      await onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't delete the review.");
+    } finally {
+      setDeletingReviewId(null);
     }
   };
 
@@ -197,6 +221,89 @@ export function AdminDashboard({
                 </li>
               ))}
             </ul>
+
+            <section className="mt-12">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="eyebrow">Reviews</p>
+                  <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">
+                    Customer reviews
+                  </h2>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {reviews.length === 0
+                    ? "No reviews yet."
+                    : `${reviews.length} review${reviews.length === 1 ? "" : "s"}.`}
+                </p>
+              </div>
+
+              {!loading && reviews.length === 0 ? (
+                <p className="mt-4 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  Customer reviews submitted on the site will appear here.
+                </p>
+              ) : (
+                <ul className="mt-4 grid gap-4">
+                  {reviews.map((review) => (
+                    <li
+                      key={review.id}
+                      className="rounded-xl border border-border bg-card p-4 shadow-soft"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div
+                              className="flex gap-1 text-primary"
+                              aria-label={`${review.rating} out of 5 stars`}
+                            >
+                              {Array.from({ length: 5 }).map((_, index) => (
+                                <Star
+                                  key={index}
+                                  className={cn(
+                                    "size-4",
+                                    index < review.rating ? "fill-current" : "fill-none",
+                                  )}
+                                  aria-hidden
+                                />
+                              ))}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {new Intl.DateTimeFormat("en", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              }).format(new Date(review.createdAt))}
+                            </p>
+                          </div>
+                          <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                            {review.text}
+                          </p>
+                          {review.imageUrls.length > 0 && (
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              {review.imageUrls.map((url) => (
+                                <img
+                                  key={url}
+                                  src={url}
+                                  alt="Customer review upload"
+                                  className="size-20 rounded-lg object-cover"
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={deletingReviewId === review.id}
+                          onClick={() => setPendingReviewDelete(review)}
+                        >
+                          {deletingReviewId === review.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
           </>
         )}
       </main>
@@ -217,6 +324,29 @@ export function AdminDashboard({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={deletingId !== null}>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void confirmDelete()} disabled={deletingId !== null}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingReviewDelete !== null}
+        onOpenChange={(open) => !open && setPendingReviewDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this review?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The review and its uploaded customer photos will be removed. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingReviewId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void confirmReviewDelete()}
+              disabled={deletingReviewId !== null}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

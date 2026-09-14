@@ -4,14 +4,14 @@ import { Hero } from "@/components/site/Hero";
 import { TrustBadges } from "@/components/site/TrustBadges";
 import { CategorySection } from "@/components/site/CategorySection";
 import { About } from "@/components/site/About";
-import { Testimonials } from "@/components/site/Testimonials";
-import { InstagramGallery } from "@/components/site/InstagramGallery";
+import { Reviews } from "@/components/site/Reviews";
 import { Newsletter } from "@/components/site/Newsletter";
 import { Faq, faqs } from "@/components/site/Faq";
 import { Footer } from "@/components/site/Footer";
 import { WhatsAppButton } from "@/components/site/WhatsAppButton";
 import { WHATSAPP_NUMBER, withCategoryProducts } from "@/data/products";
 import { listPublicProducts } from "@/lib/catalog.functions";
+import { listPublicReviews } from "@/lib/review.functions";
 
 const title = "SimplyClassy | Authentic Watches, Sneakers & Perfumes in Ghana";
 
@@ -52,11 +52,14 @@ const faqSchema = {
 };
 
 export const Route = createFileRoute("/")({
-  loader: () => listPublicProducts(),
+  loader: async () => {
+    const [products, reviews] = await Promise.all([listPublicProducts(), listPublicReviews()]);
+    return { products, reviews };
+  },
   pendingComponent: CatalogPending,
   errorComponent: CatalogError,
   head: ({ loaderData }) => {
-    const categories = withCategoryProducts(loaderData ?? []);
+    const categories = withCategoryProducts(loaderData?.products ?? []);
     const productSchema = {
       "@context": "https://schema.org",
       "@type": "ItemList",
@@ -161,7 +164,7 @@ function CatalogError({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 function Index() {
-  const products = Route.useLoaderData();
+  const { products, reviews } = Route.useLoaderData();
   const categories = withCategoryProducts(products);
 
   return (
@@ -178,8 +181,7 @@ function Index() {
         ))}
 
         <About />
-        <Testimonials />
-        <InstagramGallery />
+        <Reviews initialReviews={reviews} />
         <Newsletter />
         <Faq />
       </main>
