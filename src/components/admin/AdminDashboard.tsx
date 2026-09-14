@@ -251,6 +251,19 @@ export function AdminDashboard({
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                {review.name?.trim() || "SimplyClassy customer"}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {review.location ? `${review.location} - ` : ""}
+                                {new Intl.DateTimeFormat("en", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                }).format(new Date(review.createdAt))}
+                              </p>
+                            </div>
                             <div
                               className="flex gap-1 text-primary"
                               aria-label={`${review.rating} out of 5 stars`}
@@ -266,13 +279,6 @@ export function AdminDashboard({
                                 />
                               ))}
                             </div>
-                            <p className="text-xs text-muted-foreground">
-                              {new Intl.DateTimeFormat("en", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              }).format(new Date(review.createdAt))}
-                            </p>
                           </div>
                           <p className="mt-3 text-sm leading-6 text-muted-foreground">
                             {review.text}

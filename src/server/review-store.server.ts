@@ -1,5 +1,11 @@
 import { getRequest } from "@tanstack/start-server-core";
-import { countReviewWords, MAX_REVIEW_WORDS, type CustomerReview } from "@/data/reviews";
+import {
+  countReviewWords,
+  MAX_REVIEW_LOCATION_CHARS,
+  MAX_REVIEW_NAME_CHARS,
+  MAX_REVIEW_WORDS,
+  type CustomerReview,
+} from "@/data/reviews";
 
 const CATALOG_KV_BINDING = "simplyclassy_catalog";
 const REVIEWS_KEY = "reviews.json";
@@ -154,20 +160,36 @@ async function getPersistence(): Promise<ReviewPersistence> {
 
 function parseReview(value: unknown): CustomerReview | null {
   if (!isRecord(value)) return null;
-  const { id, text, rating, imageUrls, createdAt } = value;
+  const { id, name, location, text, rating, imageUrls, createdAt } = value;
   if (typeof id !== "string" || typeof text !== "string") return null;
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) return null;
   if (!Array.isArray(imageUrls) || !imageUrls.every((url) => typeof url === "string")) return null;
   if (typeof createdAt !== "string") return null;
   if (!text.trim() || countReviewWords(text) > MAX_REVIEW_WORDS) return null;
 
-  return {
+  const review: CustomerReview = {
     id,
     text: text.trim(),
     rating,
     imageUrls,
     createdAt,
   };
+
+  if (typeof name === "string") {
+    const trimmedName = name.trim();
+    if (trimmedName && trimmedName.length <= MAX_REVIEW_NAME_CHARS) {
+      review.name = trimmedName;
+    }
+  }
+
+  if (typeof location === "string") {
+    const trimmedLocation = location.trim();
+    if (trimmedLocation && trimmedLocation.length <= MAX_REVIEW_LOCATION_CHARS) {
+      review.location = trimmedLocation;
+    }
+  }
+
+  return review;
 }
 
 async function readReviewsRaw(store: ReviewPersistence): Promise<CustomerReview[]> {
