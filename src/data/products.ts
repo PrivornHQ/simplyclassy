@@ -212,9 +212,19 @@ export const WHATSAPP_LINK =
 
 export const formatCedis = (value: number) => `₵${value.toLocaleString("en-GH")}`;
 
-export const productWhatsAppLink = (name: string) =>
-  `https://wa.me/${WHATSAPP_NUMBER}?text=` +
-  encodeURIComponent(`Hi, I'm interested in the ${name} from SimplyClassy`);
+export const productWhatsAppLink = (product: Product, imageUrl: string) => {
+  const category = categoryById(product.category).title;
+  const message = [
+    "Hi SimplyClassy, I'd like to order this product:",
+    "",
+    `Product: ${product.name}`,
+    `Price: ${formatCedis(product.price)}`,
+    `Category: ${category}`,
+    `Image: ${imageUrl}`,
+  ].join("\n");
+
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+};
 
 export const withCategoryProducts = (products: Product[]): Category[] =>
   categories.map((meta) => ({

@@ -1,11 +1,21 @@
-import { useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { formatCedis, productWhatsAppLink, type Product } from "@/data/products";
 import { cn } from "@/lib/utils";
 
 export function ProductCard({ product }: { product: Product }) {
   const [expanded, setExpanded] = useState(false);
+  const [origin, setOrigin] = useState("");
   const description = product.description?.trim();
   const hasDescription = Boolean(description);
+  const productImageUrl = useMemo(() => {
+    if (/^https?:\/\//i.test(product.image)) return product.image;
+    if (!origin) return product.image;
+    return new URL(product.image, origin).toString();
+  }, [origin, product.image]);
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   const toggleDescription = (event: MouseEvent<HTMLElement>) => {
     if (!hasDescription) return;
@@ -57,7 +67,7 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="mt-auto pt-3">
           {product.available ? (
             <a
-              href={productWhatsAppLink(product.name)}
+              href={productWhatsAppLink(product, productImageUrl)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex w-full items-center justify-center rounded-full bg-whatsapp px-3 py-1.5 text-sm font-medium whitespace-nowrap text-background transition-opacity hover:opacity-90 sm:px-4 sm:py-2"
