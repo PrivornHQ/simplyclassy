@@ -75,7 +75,7 @@ export function ProductCard({ product }: { product: Product }) {
           <div
             id={descriptionId}
             className={cn(
-              "grid grid-rows-[0fr] opacity-0 transition-all duration-300 ease-out group-hover:grid-rows-[1fr] group-hover:opacity-100 group-focus:grid-rows-[1fr] group-focus:opacity-100",
+              "grid grid-rows-[0fr] opacity-0 transition-all duration-300 ease-out [@media(hover:hover)]:group-hover:grid-rows-[1fr] [@media(hover:hover)]:group-hover:opacity-100 group-focus-visible:grid-rows-[1fr] group-focus-visible:opacity-100",
               expanded && "grid-rows-[1fr] opacity-100",
             )}
           >
