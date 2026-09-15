@@ -29,7 +29,7 @@ export function CategorySection({ category }: { category: Category }) {
             <h2
               className={
                 category.id === "sneakers"
-                  ? "mt-2 font-sans text-3xl font-semibold text-foreground sm:text-4xl"
+                  ? "mt-2 font-sans text-3xl leading-tight font-medium text-foreground sm:text-4xl"
                   : "mt-2 text-3xl font-semibold text-foreground sm:text-4xl"
               }
             >
