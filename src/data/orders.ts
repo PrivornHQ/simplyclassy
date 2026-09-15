@@ -12,12 +12,23 @@ export type OrderSnapshotItem = {
 
 export type OrderSnapshot = {
   id: string;
+  name: string;
+  location: string;
   items: OrderSnapshotItem[];
   overallTotal: number;
   createdAt: string;
 };
 
+export const MAX_ORDER_CUSTOMER_NAME_CHARS = 80;
+export const MAX_ORDER_LOCATION_CHARS = 120;
+
 export type CreateOrderCartItem = {
   productId: string;
   quantity: number;
+};
+
+export type CreateOrderInput = {
+  name: string;
+  location: string;
+  items: CreateOrderCartItem[];
 };

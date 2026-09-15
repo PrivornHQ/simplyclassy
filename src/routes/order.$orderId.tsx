@@ -122,7 +122,15 @@ function OrderPage() {
               </div>
             </div>
 
-            <dl className="grid gap-3 border-b border-border py-5 text-sm sm:grid-cols-2">
+            <dl className="grid gap-3 border-b border-border py-5 text-sm sm:grid-cols-2 lg:grid-cols-4">
+              <div>
+                <dt className="text-muted-foreground">Name</dt>
+                <dd className="mt-1 font-medium text-foreground">{order.name}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Location</dt>
+                <dd className="mt-1 font-medium text-foreground">{order.location}</dd>
+              </div>
               <div>
                 <dt className="text-muted-foreground">Created</dt>
                 <dd className="mt-1 font-medium text-foreground">

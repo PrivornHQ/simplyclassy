@@ -1,5 +1,12 @@
 import { isCategoryId, type Product } from "@/data/products";
-import type { CreateOrderCartItem, OrderSnapshot, OrderSnapshotItem } from "@/data/orders";
+import {
+  MAX_ORDER_CUSTOMER_NAME_CHARS,
+  MAX_ORDER_LOCATION_CHARS,
+  type CreateOrderCartItem,
+  type CreateOrderInput,
+  type OrderSnapshot,
+  type OrderSnapshotItem,
+} from "@/data/orders";
 import { listStoredProducts } from "@/server/catalog-store.server";
 import { getRequest } from "@tanstack/start-server-core";
 
@@ -119,8 +126,35 @@ async function getPersistence(): Promise<OrderPersistence> {
 }
 
 const isSafeOrderId = (value: string) => /^[a-zA-Z0-9_-]{6,80}$/.test(value);
+const LOCATION_ADDRESS_PATTERN = /[\d#]/;
 
 const orderKey = (orderId: string) => `${ORDER_KEY_PREFIX}${orderId}.json`;
+
+function normalizeCustomerField(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function validateCustomerInfo(nameInput: string, locationInput: string) {
+  const name = normalizeCustomerField(nameInput);
+  const location = normalizeCustomerField(locationInput);
+
+  if (!name) throw new Error("Name is required.");
+  if (name.length < 2) throw new Error("Name must be at least 2 characters.");
+  if (name.length > MAX_ORDER_CUSTOMER_NAME_CHARS) {
+    throw new Error(`Name must be ${MAX_ORDER_CUSTOMER_NAME_CHARS} characters or fewer.`);
+  }
+
+  if (!location) throw new Error("Location is required.");
+  if (location.length < 2) throw new Error("Location must be at least 2 characters.");
+  if (location.length > MAX_ORDER_LOCATION_CHARS) {
+    throw new Error(`Location must be ${MAX_ORDER_LOCATION_CHARS} characters or fewer.`);
+  }
+  if (LOCATION_ADDRESS_PATTERN.test(location)) {
+    throw new Error("Use a city or area for location, not an exact address.");
+  }
+
+  return { name, location };
+}
 
 function parseOrderItem(value: unknown): OrderSnapshotItem | null {
   if (!isRecord(value)) return null;
@@ -148,8 +182,10 @@ function parseOrderItem(value: unknown): OrderSnapshotItem | null {
 
 function parseStoredOrder(value: unknown): OrderSnapshot | null {
   if (!isRecord(value)) return null;
-  const { id, items, overallTotal, createdAt } = value;
+  const { id, name, location, items, overallTotal, createdAt } = value;
   if (typeof id !== "string" || !isSafeOrderId(id)) return null;
+  if (typeof name !== "string" || !name.trim()) return null;
+  if (typeof location !== "string" || !location.trim()) return null;
   if (!Array.isArray(items)) return null;
   if (typeof overallTotal !== "number" || !Number.isFinite(overallTotal) || overallTotal < 0) {
     return null;
@@ -161,6 +197,8 @@ function parseStoredOrder(value: unknown): OrderSnapshot | null {
 
   return {
     id,
+    name,
+    location,
     items: parsedItems,
     overallTotal,
     createdAt,
@@ -194,7 +232,9 @@ function snapshotProduct(product: Product, quantity: number): OrderSnapshotItem 
   };
 }
 
-export async function createStoredOrder(items: CreateOrderCartItem[]): Promise<OrderSnapshot> {
+export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSnapshot> {
+  const customer = validateCustomerInfo(data.name, data.location);
+  const { items } = data;
   const cartItems = aggregateCartItems(items);
   if (cartItems.length === 0) throw new Error("Add at least one product before ordering.");
 
@@ -211,6 +251,8 @@ export async function createStoredOrder(items: CreateOrderCartItem[]): Promise<O
   const overallTotal = orderItems.reduce((sum, item) => sum + item.lineSubtotal, 0);
   const order: OrderSnapshot = {
     id: crypto.randomUUID(),
+    name: customer.name,
+    location: customer.location,
     items: orderItems,
     overallTotal,
     createdAt: new Date().toISOString(),

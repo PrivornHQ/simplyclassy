@@ -5,11 +5,22 @@ import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import { Minus, Plus, ShoppingBag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Sheet,
   SheetClose,
@@ -26,10 +37,15 @@ import {
   type CategoryId,
   type Product,
 } from "@/data/products";
+import {
+  MAX_ORDER_CUSTOMER_NAME_CHARS,
+  MAX_ORDER_LOCATION_CHARS,
+} from "@/data/orders";
 import { createOrder } from "@/lib/order.functions";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "simplyclassy-order-cart";
+const LOCATION_ADDRESS_PATTERN = /[\d#]/;
 
 export type OrderCartItem = {
   id: string;
@@ -220,6 +236,10 @@ export function OrderCartTrigger({ className }: { className?: string }) {
 
 function OrderSummarySheet() {
   const [checkingOut, setCheckingOut] = useState(false);
+  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
+  const [customerName, setCustomerName] = useState("");
+  const [customerLocation, setCustomerLocation] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const {
     clearCart,
     decreaseQuantity,
@@ -231,8 +251,36 @@ function OrderSummarySheet() {
     total,
   } = useOrderCart();
 
-  const checkout = async () => {
+  const validateCustomerDetails = () => {
+    const name = customerName.trim().replace(/\s+/g, " ");
+    const location = customerLocation.trim().replace(/\s+/g, " ");
+
+    if (!name) return "Name is required.";
+    if (name.length < 2) return "Name must be at least 2 characters.";
+    if (name.length > MAX_ORDER_CUSTOMER_NAME_CHARS) {
+      return `Name must be ${MAX_ORDER_CUSTOMER_NAME_CHARS} characters or fewer.`;
+    }
+    if (!location) return "Location is required.";
+    if (location.length < 2) return "Location must be at least 2 characters.";
+    if (location.length > MAX_ORDER_LOCATION_CHARS) {
+      return `Location must be ${MAX_ORDER_LOCATION_CHARS} characters or fewer.`;
+    }
+    if (LOCATION_ADDRESS_PATTERN.test(location)) {
+      return "Use a city or area for location, not an exact address.";
+    }
+
+    return { name, location };
+  };
+
+  const checkout = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (items.length === 0 || checkingOut) return;
+
+    const customer = validateCustomerDetails();
+    if (typeof customer === "string") {
+      setFormError(customer);
+      return;
+    }
 
     const checkoutWindow = window.open("", "_blank");
     if (!checkoutWindow) {
@@ -246,6 +294,8 @@ function OrderSummarySheet() {
     try {
       const order = await createOrder({
         data: {
+          name: customer.name,
+          location: customer.location,
           items: items.map((item) => ({
             productId: item.id,
             quantity: item.quantity,
@@ -255,15 +305,20 @@ function OrderSummarySheet() {
       const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
       const orderUrl = new URL(`/order/${order.id}`, window.location.origin).toString();
       checkoutWindow.location.href = orderWhatsAppLink({
+        name: order.name,
+        location: order.location,
         orderUrl,
         itemCount,
         total: order.overallTotal,
       });
       clearCart();
+      setCustomerDialogOpen(false);
       setOpen(false);
     } catch (error) {
       checkoutWindow.close();
-      toast.error(error instanceof Error ? error.message : "Couldn't create the order link.");
+      const message = error instanceof Error ? error.message : "Couldn't create the order link.";
+      setFormError(message);
+      toast.error(message);
     } finally {
       setCheckingOut(false);
     }
@@ -377,11 +432,14 @@ function OrderSummarySheet() {
               </SheetClose>
               <Button
                 type="button"
-                onClick={checkout}
+                onClick={() => {
+                  setFormError(null);
+                  setCustomerDialogOpen(true);
+                }}
                 disabled={items.length === 0 || checkingOut}
                 className="rounded-full bg-whatsapp text-background hover:bg-whatsapp/90"
               >
-                {checkingOut ? "Creating order..." : "Order on WhatsApp"}
+                Order on WhatsApp
               </Button>
             </div>
 
@@ -397,6 +455,81 @@ function OrderSummarySheet() {
           </div>
         </SheetFooter>
       </SheetContent>
+
+      <Dialog
+        open={customerDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (checkingOut) return;
+          setCustomerDialogOpen(nextOpen);
+          if (nextOpen) setFormError(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl">Customer Details</DialogTitle>
+            <DialogDescription>
+              Add the name and city or area to include with the order link.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={checkout} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="order-customer-name">Name</Label>
+              <Input
+                id="order-customer-name"
+                value={customerName}
+                onChange={(event) => {
+                  setCustomerName(event.target.value);
+                  setFormError(null);
+                }}
+                required
+                maxLength={MAX_ORDER_CUSTOMER_NAME_CHARS}
+                autoComplete="name"
+                placeholder="Ama Mensah"
+                disabled={checkingOut}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="order-customer-location">Location</Label>
+              <Input
+                id="order-customer-location"
+                value={customerLocation}
+                onChange={(event) => {
+                  setCustomerLocation(event.target.value);
+                  setFormError(null);
+                }}
+                required
+                maxLength={MAX_ORDER_LOCATION_CHARS}
+                autoComplete="address-level2"
+                placeholder="East Legon, Accra"
+                disabled={checkingOut}
+              />
+            </div>
+
+            {formError && <p className="text-sm font-medium text-destructive">{formError}</p>}
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                disabled={checkingOut}
+                onClick={() => setCustomerDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={items.length === 0 || checkingOut}
+                className="rounded-full bg-whatsapp text-background hover:bg-whatsapp/90"
+              >
+                {checkingOut ? "Creating order..." : "Continue to WhatsApp"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </Sheet>
   );
 }
