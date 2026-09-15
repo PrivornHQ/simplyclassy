@@ -313,6 +313,7 @@ function OrderSummarySheet() {
       const orderUrl = new URL(`/order/${order.id}`, window.location.origin).toString();
       const checkoutWindow = window.open(
         orderWhatsAppLink({
+          orderNumber: order.orderNumber,
           name: order.name,
           location: order.location,
           orderUrl,

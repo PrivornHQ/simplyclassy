@@ -12,7 +12,7 @@ export const Route = createFileRoute("/order/$orderId")({
     meta: [
       {
         title: loaderData
-          ? `Order ${loaderData.id} | SimplyClassy`
+          ? `Order ${loaderData.orderNumber} | SimplyClassy`
           : "Order not found | SimplyClassy",
       },
       {
@@ -111,13 +111,13 @@ function OrderPage() {
                   id="order-title"
                   className="mt-2 font-display text-4xl font-semibold text-foreground sm:text-5xl"
                 >
-                  Customer Order
+                  Order #{order.orderNumber}
                 </h1>
               </div>
               <div className="rounded-md border border-border px-4 py-3 text-sm">
                 <p className="text-muted-foreground">Reference</p>
                 <p className="mt-1 max-w-full break-all font-semibold text-foreground">
-                  {order.id}
+                  {order.orderNumber}
                 </p>
               </div>
             </div>

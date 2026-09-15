@@ -12,6 +12,7 @@ export type OrderSnapshotItem = {
 
 export type OrderSnapshot = {
   id: string;
+  orderNumber: string;
   name: string;
   location: string;
   items: OrderSnapshotItem[];

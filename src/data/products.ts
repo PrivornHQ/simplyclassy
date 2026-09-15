@@ -210,6 +210,7 @@ export const WHATSAPP_NUMBER = "233243954370";
 export const formatCedis = (value: number) => `₵${value.toLocaleString("en-GH")}`;
 
 export type WhatsAppOrderSummary = {
+  orderNumber: string;
   name: string;
   location: string;
   orderUrl: string;
@@ -220,6 +221,7 @@ export type WhatsAppOrderSummary = {
 export const formatWhatsAppCedis = formatCedis;
 
 export const orderWhatsAppLink = ({
+  orderNumber,
   name,
   location,
   orderUrl,
@@ -229,6 +231,7 @@ export const orderWhatsAppLink = ({
   const message = [
     "Hi SimplyClassy, I'd like to place an order:",
     "",
+    `Order: ${orderNumber}`,
     `Name: ${name}`,
     `Location: ${location}`,
     "",

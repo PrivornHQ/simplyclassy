@@ -12,15 +12,21 @@ import { getRequest } from "@tanstack/start-server-core";
 
 const CATALOG_KV_BINDING = "simplyclassy_catalog";
 const ORDER_KEY_PREFIX = "orders/";
+const ORDER_NUMBER_COUNTER_KEY = "orders/order-number-counter.json";
+const ORDER_NUMBER_INDEX_PREFIX = "order-numbers/";
+const FIRST_ORDER_SEQUENCE = 437001;
+const ORDER_NUMBER_PREFIX = "SC-";
 export const ORDER_RETENTION_SECONDS = 60 * 60 * 24 * 30;
 
 type OrderPersistence = {
   getText: (key: string) => Promise<string | null>;
   setText: (key: string, value: string, expirationTtlSeconds: number) => Promise<void>;
+  setTextPermanent: (key: string, value: string) => Promise<void>;
   deleteKey: (key: string) => Promise<void>;
 };
 
 let persistencePromise: Promise<OrderPersistence> | undefined;
+let orderNumberLock: Promise<unknown> = Promise.resolve();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -70,6 +76,9 @@ function createCloudflareKVPersistence(kv: OrderKVNamespace): OrderPersistence {
         expirationTtl: expirationTtlSeconds,
       });
     },
+    async setTextPermanent(key, value) {
+      await kv.put(key, value, { metadata: { contentType: "application/json" } });
+    },
     async deleteKey(key) {
       await kv.delete(key);
     },
@@ -109,6 +118,9 @@ async function createFilePersistence(): Promise<OrderPersistence> {
       const expiresAt = new Date(Date.now() + expirationTtlSeconds * 1000).toISOString();
       await writeFile(fileFor(key), JSON.stringify({ expiresAt, value }), "utf8");
     },
+    async setTextPermanent(key, value) {
+      await writeFile(fileFor(key), value, "utf8");
+    },
     async deleteKey(key) {
       await unlink(fileFor(key)).catch(() => undefined);
     },
@@ -126,9 +138,13 @@ async function getPersistence(): Promise<OrderPersistence> {
 }
 
 const isSafeOrderId = (value: string) => /^[a-zA-Z0-9_-]{6,80}$/.test(value);
+const isOrderNumber = (value: string) => /^SC-\d{6,}$/.test(value);
 const LOCATION_ADDRESS_PATTERN = /[\d#]/;
 
 const orderKey = (orderId: string) => `${ORDER_KEY_PREFIX}${orderId}.json`;
+const orderNumberKey = (orderNumber: string) => `${ORDER_NUMBER_INDEX_PREFIX}${orderNumber}.json`;
+
+const formatOrderNumber = (sequence: number) => `${ORDER_NUMBER_PREFIX}${sequence}`;
 
 function normalizeCustomerField(value: string) {
   return value.trim().replace(/\s+/g, " ");
@@ -182,8 +198,9 @@ function parseOrderItem(value: unknown): OrderSnapshotItem | null {
 
 function parseStoredOrder(value: unknown): OrderSnapshot | null {
   if (!isRecord(value)) return null;
-  const { id, name, location, items, overallTotal, createdAt } = value;
+  const { id, orderNumber, name, location, items, overallTotal, createdAt } = value;
   if (typeof id !== "string" || !isSafeOrderId(id)) return null;
+  if (typeof orderNumber !== "string" && orderNumber !== undefined) return null;
   if (typeof name !== "string" || !name.trim()) return null;
   if (typeof location !== "string" || !location.trim()) return null;
   if (!Array.isArray(items)) return null;
@@ -197,6 +214,7 @@ function parseStoredOrder(value: unknown): OrderSnapshot | null {
 
   return {
     id,
+    orderNumber: typeof orderNumber === "string" && isOrderNumber(orderNumber) ? orderNumber : id,
     name,
     location,
     items: parsedItems,
@@ -232,6 +250,79 @@ function snapshotProduct(product: Product, quantity: number): OrderSnapshotItem 
   };
 }
 
+function parseNextSequence(raw: string | null) {
+  if (!raw) return FIRST_ORDER_SEQUENCE;
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (isRecord(parsed) && typeof parsed["nextSequence"] === "number") {
+      const nextSequence = parsed["nextSequence"];
+      if (Number.isInteger(nextSequence) && nextSequence >= FIRST_ORDER_SEQUENCE) {
+        return nextSequence;
+      }
+    }
+  } catch {
+    const sequence = Number(raw);
+    if (Number.isInteger(sequence) && sequence >= FIRST_ORDER_SEQUENCE) return sequence;
+  }
+
+  return FIRST_ORDER_SEQUENCE;
+}
+
+async function readNextOrderSequence(store: OrderPersistence) {
+  return parseNextSequence(await store.getText(ORDER_NUMBER_COUNTER_KEY));
+}
+
+async function createOrderWithNumber(
+  store: OrderPersistence,
+  orderData: Omit<OrderSnapshot, "id" | "orderNumber">,
+) {
+  const run = orderNumberLock.then(async () => {
+    let sequence = await readNextOrderSequence(store);
+
+    for (let attempts = 0; attempts < 100; attempts += 1) {
+      const orderNumber = formatOrderNumber(sequence);
+      const existingOrderId = await store.getText(orderNumberKey(orderNumber));
+      if (existingOrderId) {
+        sequence += 1;
+        continue;
+      }
+
+      const order: OrderSnapshot = {
+        id: crypto.randomUUID(),
+        orderNumber,
+        ...orderData,
+      };
+      const indexKey = orderNumberKey(orderNumber);
+      const snapshotKey = orderKey(order.id);
+
+      try {
+        await store.setText(indexKey, order.id, ORDER_RETENTION_SECONDS);
+        await store.setText(snapshotKey, JSON.stringify(order), ORDER_RETENTION_SECONDS);
+        await store.setTextPermanent(
+          ORDER_NUMBER_COUNTER_KEY,
+          JSON.stringify({
+            nextSequence: sequence + 1,
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+        return order;
+      } catch (error) {
+        await Promise.all([
+          store.deleteKey(indexKey).catch(() => undefined),
+          store.deleteKey(snapshotKey).catch(() => undefined),
+        ]);
+        throw error;
+      }
+    }
+
+    throw new Error("Could not reserve a unique order number.");
+  });
+
+  orderNumberLock = run.catch(() => undefined);
+  return run;
+}
+
 export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSnapshot> {
   const customer = validateCustomerInfo(data.name, data.location);
   const cartItems = aggregateCartItems(data.cart);
@@ -248,8 +339,7 @@ export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSn
   });
 
   const overallTotal = orderItems.reduce((sum, item) => sum + item.lineSubtotal, 0);
-  const order: OrderSnapshot = {
-    id: crypto.randomUUID(),
+  const orderData: Omit<OrderSnapshot, "id" | "orderNumber"> = {
     name: customer.name,
     location: customer.location,
     items: orderItems,
@@ -258,8 +348,7 @@ export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSn
   };
 
   const store = await getPersistence();
-  await store.setText(orderKey(order.id), JSON.stringify(order), ORDER_RETENTION_SECONDS);
-  return order;
+  return createOrderWithNumber(store, orderData);
 }
 
 export async function readStoredOrder(orderId: string): Promise<OrderSnapshot | null> {
