@@ -234,8 +234,7 @@ function snapshotProduct(product: Product, quantity: number): OrderSnapshotItem 
 
 export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSnapshot> {
   const customer = validateCustomerInfo(data.name, data.location);
-  const { items } = data;
-  const cartItems = aggregateCartItems(items);
+  const cartItems = aggregateCartItems(data.cart);
   if (cartItems.length === 0) throw new Error("Add at least one product before ordering.");
 
   const products = await listStoredProducts();

@@ -30,5 +30,5 @@ export type CreateOrderCartItem = {
 export type CreateOrderInput = {
   name: string;
   location: string;
-  items: CreateOrderCartItem[];
+  cart: CreateOrderCartItem[];
 };

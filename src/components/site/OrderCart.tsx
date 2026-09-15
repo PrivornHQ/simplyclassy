@@ -251,16 +251,20 @@ function OrderSummarySheet() {
     total,
   } = useOrderCart();
 
-  const validateCustomerDetails = () => {
-    const name = customerName.trim().replace(/\s+/g, " ");
-    const location = customerLocation.trim().replace(/\s+/g, " ");
+  const validateCustomerDetails = (form: HTMLFormElement) => {
+    const formData = new FormData(form);
+    const name = String(formData.get("name") ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+    const location = String(formData.get("location") ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
 
-    if (!name) return "Name is required.";
+    if (!name || !location) return "Please enter your name and location to continue.";
     if (name.length < 2) return "Name must be at least 2 characters.";
     if (name.length > MAX_ORDER_CUSTOMER_NAME_CHARS) {
       return `Name must be ${MAX_ORDER_CUSTOMER_NAME_CHARS} characters or fewer.`;
     }
-    if (!location) return "Location is required.";
     if (location.length < 2) return "Location must be at least 2 characters.";
     if (location.length > MAX_ORDER_LOCATION_CHARS) {
       return `Location must be ${MAX_ORDER_LOCATION_CHARS} characters or fewer.`;
@@ -276,19 +280,16 @@ function OrderSummarySheet() {
     event.preventDefault();
     if (items.length === 0 || checkingOut) return;
 
-    const customer = validateCustomerDetails();
+    const customer = validateCustomerDetails(event.currentTarget);
     if (typeof customer === "string") {
       setFormError(customer);
       return;
     }
 
-    const checkoutWindow = window.open("", "_blank");
-    if (!checkoutWindow) {
-      toast.error("WhatsApp could not be opened. Please allow pop-ups and try again.");
-      return;
-    }
-
-    checkoutWindow.opener = null;
+    const cart = items.map((item) => ({
+      productId: item.id,
+      quantity: item.quantity,
+    }));
     setCheckingOut(true);
 
     try {
@@ -296,27 +297,32 @@ function OrderSummarySheet() {
         data: {
           name: customer.name,
           location: customer.location,
-          items: items.map((item) => ({
-            productId: item.id,
-            quantity: item.quantity,
-          })),
+          cart,
         },
       });
       const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
       const orderUrl = new URL(`/order/${order.id}`, window.location.origin).toString();
-      checkoutWindow.location.href = orderWhatsAppLink({
-        name: order.name,
-        location: order.location,
-        orderUrl,
-        itemCount,
-        total: order.overallTotal,
-      });
+      const checkoutWindow = window.open(
+        orderWhatsAppLink({
+          name: order.name,
+          location: order.location,
+          orderUrl,
+          itemCount,
+          total: order.overallTotal,
+        }),
+        "_blank",
+      );
+      if (!checkoutWindow) {
+        toast.error("WhatsApp could not be opened. Please allow pop-ups and try again.");
+        return;
+      }
+
+      checkoutWindow.opener = null;
       clearCart();
       setCustomerDialogOpen(false);
       setOpen(false);
-    } catch (error) {
-      checkoutWindow.close();
-      const message = error instanceof Error ? error.message : "Couldn't create the order link.";
+    } catch {
+      const message = "We couldn't create your order. Please try again.";
       setFormError(message);
       toast.error(message);
     } finally {
@@ -477,6 +483,7 @@ function OrderSummarySheet() {
               <Label htmlFor="order-customer-name">Name</Label>
               <Input
                 id="order-customer-name"
+                name="name"
                 value={customerName}
                 onChange={(event) => {
                   setCustomerName(event.target.value);
@@ -494,6 +501,7 @@ function OrderSummarySheet() {
               <Label htmlFor="order-customer-location">Location</Label>
               <Input
                 id="order-customer-location"
+                name="location"
                 value={customerLocation}
                 onChange={(event) => {
                   setCustomerLocation(event.target.value);
