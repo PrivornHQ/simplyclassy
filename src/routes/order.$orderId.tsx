@@ -109,7 +109,7 @@ function OrderPage() {
                 <p className="eyebrow">Order Summary</p>
                 <h1
                   id="order-title"
-                  className="mt-2 font-display text-4xl font-semibold text-foreground sm:text-5xl"
+                  className="mt-2 font-sans text-4xl font-semibold text-foreground sm:text-5xl"
                 >
                   Order #{order.orderNumber}
                 </h1>
