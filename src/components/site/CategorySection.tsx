@@ -56,7 +56,7 @@ export function CategorySection({ category }: { category: Category }) {
             New pieces for this collection will appear here soon.
           </p>
         ) : (
-          <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
+          <div className="mt-8 grid grid-cols-2 items-start gap-4 md:grid-cols-4 md:gap-6">
             {products.map((p) => (
               <ProductCard key={p.id} product={p} />
             ))}
