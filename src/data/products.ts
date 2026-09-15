@@ -209,34 +209,23 @@ export const WHATSAPP_NUMBER = "233243954370";
 
 export const formatCedis = (value: number) => `₵${value.toLocaleString("en-GH")}`;
 
-export type WhatsAppOrderLine = {
-  name: string;
-  price: number;
-  quantity: number;
+export type WhatsAppOrderSummary = {
+  orderUrl: string;
+  itemCount: number;
+  total: number;
 };
 
-export const formatWhatsAppCedis = (value: number) => `GHS ${value.toLocaleString("en-GH")}`;
+export const formatWhatsAppCedis = formatCedis;
 
-export const orderWhatsAppLink = (items: WhatsAppOrderLine[]) => {
-  const lines = items.flatMap((item, index) => {
-    const quantity = Math.max(1, item.quantity);
-    const lineTotal = item.price * quantity;
-
-    return [
-      `${index + 1}. ${item.name}`,
-      `Qty: ${quantity}`,
-      `Price: ${formatWhatsAppCedis(item.price)}`,
-      `Subtotal: ${formatWhatsAppCedis(lineTotal)}`,
-      "",
-    ];
-  });
-
-  const total = items.reduce((sum, item) => sum + item.price * Math.max(1, item.quantity), 0);
+export const orderWhatsAppLink = ({ orderUrl, itemCount, total }: WhatsAppOrderSummary) => {
   const message = [
-    "Hi SimplyClassy, I'd like to order:",
+    "Hi SimplyClassy, I'd like to place an order:",
     "",
-    ...lines,
+    `Items: ${itemCount}`,
     `Total: ${formatWhatsAppCedis(total)}`,
+    "",
+    "View full order:",
+    orderUrl,
   ].join("\n");
 
   return `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;

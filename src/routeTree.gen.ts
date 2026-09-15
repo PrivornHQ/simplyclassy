@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as OrderOrderIdRouteImport } from './routes/order.$orderId'
 import { Route as ApiCatalogImagesImageIdRouteImport } from './routes/api/catalog/images.$imageId'
 import { Route as ApiReviewsImagesImageIdRouteImport } from './routes/api/reviews/images.$imageId'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
   path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrderOrderIdRoute = OrderOrderIdRouteImport.update({
+  id: '/order/$orderId',
+  path: '/order/$orderId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCatalogImagesImageIdRoute = ApiCatalogImagesImageIdRouteImport.update({
@@ -38,12 +44,14 @@ const ApiReviewsImagesImageIdRoute = ApiReviewsImagesImageIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/order/$orderId': typeof OrderOrderIdRoute
   '/api/catalog/images/$imageId': typeof ApiCatalogImagesImageIdRoute
   '/api/reviews/images/$imageId': typeof ApiReviewsImagesImageIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/order/$orderId': typeof OrderOrderIdRoute
   '/api/catalog/images/$imageId': typeof ApiCatalogImagesImageIdRoute
   '/api/reviews/images/$imageId': typeof ApiReviewsImagesImageIdRoute
 }
@@ -51,6 +59,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRoute
+  '/order/$orderId': typeof OrderOrderIdRoute
   '/api/catalog/images/$imageId': typeof ApiCatalogImagesImageIdRoute
   '/api/reviews/images/$imageId': typeof ApiReviewsImagesImageIdRoute
 }
@@ -59,18 +68,21 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/order/$orderId'
     | '/api/catalog/images/$imageId'
     | '/api/reviews/images/$imageId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/admin'
+    | '/order/$orderId'
     | '/api/catalog/images/$imageId'
     | '/api/reviews/images/$imageId'
   id:
     | '__root__'
     | '/'
     | '/admin'
+    | '/order/$orderId'
     | '/api/catalog/images/$imageId'
     | '/api/reviews/images/$imageId'
   fileRoutesById: FileRoutesById
@@ -78,6 +90,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRoute
+  OrderOrderIdRoute: typeof OrderOrderIdRoute
   ApiCatalogImagesImageIdRoute: typeof ApiCatalogImagesImageIdRoute
   ApiReviewsImagesImageIdRoute: typeof ApiReviewsImagesImageIdRoute
 }
@@ -96,6 +109,13 @@ declare module '@tanstack/react-router' {
       path: '/admin'
       fullPath: '/admin'
       preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/order/$orderId': {
+      id: '/order/$orderId'
+      path: '/order/$orderId'
+      fullPath: '/order/$orderId'
+      preLoaderRoute: typeof OrderOrderIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/catalog/images/$imageId': {
@@ -118,6 +138,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRoute,
+  OrderOrderIdRoute: OrderOrderIdRoute,
   ApiCatalogImagesImageIdRoute: ApiCatalogImagesImageIdRoute,
   ApiReviewsImagesImageIdRoute: ApiReviewsImagesImageIdRoute,
 }

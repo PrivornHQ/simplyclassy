@@ -33,14 +33,14 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="relative">
+        <div className="group relative overflow-hidden rounded-2xl shadow-lift">
           <img
             src={heroImage}
             alt="Authentic wrist watch, designer perfume and Nike Mind001 Slides from SimplyClassy"
             width={1600}
             height={1008}
             fetchPriority="high"
-            className="w-full rounded-2xl object-cover shadow-lift"
+            className="block w-full object-cover transition-transform duration-[650ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none md:[@media(hover:hover)]:group-hover:scale-[1.04] motion-reduce:md:[@media(hover:hover)]:group-hover:scale-100"
           />
         </div>
       </div>

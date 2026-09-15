@@ -1,0 +1,24 @@
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
+import { createStoredOrder, readStoredOrder } from "@/server/order-store.server";
+
+const cartItemSchema = z.object({
+  productId: z.string().trim().min(1).max(120),
+  quantity: z.number().int().min(1).max(999),
+});
+
+export const createOrder = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      items: z.array(cartItemSchema).min(1).max(50),
+    }),
+  )
+  .handler(async ({ data }) => {
+    return createStoredOrder(data.items);
+  });
+
+export const getPublicOrder = createServerFn({ method: "GET" })
+  .validator(z.object({ orderId: z.string().trim().min(1).max(120) }))
+  .handler(async ({ data }) => {
+    return readStoredOrder(data.orderId);
+  });

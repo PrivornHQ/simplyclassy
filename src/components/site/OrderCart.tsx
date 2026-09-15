@@ -26,6 +26,7 @@ import {
   type CategoryId,
   type Product,
 } from "@/data/products";
+import { createOrder } from "@/lib/order.functions";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "simplyclassy-order-cart";
@@ -59,16 +60,16 @@ const isStoredItem = (value: unknown): value is OrderCartItem => {
   const item = value as Record<string, unknown>;
 
   return (
-    typeof item.id === "string" &&
-    typeof item.name === "string" &&
-    typeof item.price === "number" &&
-    typeof item.category === "string" &&
-    ["perfumes", "sneakers", "watches"].includes(item.category) &&
-    typeof item.image === "string" &&
-    typeof item.quantity === "number" &&
-    Number.isFinite(item.price) &&
-    Number.isInteger(item.quantity) &&
-    item.quantity > 0
+    typeof item["id"] === "string" &&
+    typeof item["name"] === "string" &&
+    typeof item["price"] === "number" &&
+    typeof item["category"] === "string" &&
+    ["perfumes", "sneakers", "watches"].includes(item["category"]) &&
+    typeof item["image"] === "string" &&
+    typeof item["quantity"] === "number" &&
+    Number.isFinite(item["price"]) &&
+    Number.isInteger(item["quantity"]) &&
+    item["quantity"] > 0
   );
 };
 
@@ -218,6 +219,7 @@ export function OrderCartTrigger({ className }: { className?: string }) {
 }
 
 function OrderSummarySheet() {
+  const [checkingOut, setCheckingOut] = useState(false);
   const {
     clearCart,
     decreaseQuantity,
@@ -229,18 +231,42 @@ function OrderSummarySheet() {
     total,
   } = useOrderCart();
 
-  const checkout = () => {
-    if (items.length === 0) return;
+  const checkout = async () => {
+    if (items.length === 0 || checkingOut) return;
 
-    const checkoutWindow = window.open(orderWhatsAppLink(items), "_blank");
+    const checkoutWindow = window.open("", "_blank");
     if (!checkoutWindow) {
       toast.error("WhatsApp could not be opened. Please allow pop-ups and try again.");
       return;
     }
 
     checkoutWindow.opener = null;
-    clearCart();
-    setOpen(false);
+    setCheckingOut(true);
+
+    try {
+      const order = await createOrder({
+        data: {
+          items: items.map((item) => ({
+            productId: item.id,
+            quantity: item.quantity,
+          })),
+        },
+      });
+      const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+      const orderUrl = new URL(`/order/${order.id}`, window.location.origin).toString();
+      checkoutWindow.location.href = orderWhatsAppLink({
+        orderUrl,
+        itemCount,
+        total: order.overallTotal,
+      });
+      clearCart();
+      setOpen(false);
+    } catch (error) {
+      checkoutWindow.close();
+      toast.error(error instanceof Error ? error.message : "Couldn't create the order link.");
+    } finally {
+      setCheckingOut(false);
+    }
   };
 
   return (
@@ -352,10 +378,10 @@ function OrderSummarySheet() {
               <Button
                 type="button"
                 onClick={checkout}
-                disabled={items.length === 0}
+                disabled={items.length === 0 || checkingOut}
                 className="rounded-full bg-whatsapp text-background hover:bg-whatsapp/90"
               >
-                Order on WhatsApp
+                {checkingOut ? "Creating order..." : "Order on WhatsApp"}
               </Button>
             </div>
 
