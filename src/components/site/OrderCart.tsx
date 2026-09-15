@@ -278,7 +278,11 @@ function OrderSummarySheet() {
 
   const checkout = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (items.length === 0 || checkingOut) return;
+    if (checkingOut) return;
+    if (items.length === 0) {
+      setFormError("Your order is empty. Add a product before continuing.");
+      return;
+    }
 
     const customer = validateCustomerDetails(event.currentTarget);
     if (typeof customer === "string") {
@@ -286,10 +290,15 @@ function OrderSummarySheet() {
       return;
     }
 
-    const cart = items.map((item) => ({
+    const orderCart = items.map((item) => ({
       productId: item.id,
       quantity: item.quantity,
     }));
+    if (orderCart.length === 0) {
+      setFormError("Your order is empty. Add a product before continuing.");
+      return;
+    }
+
     setCheckingOut(true);
 
     try {
@@ -297,7 +306,7 @@ function OrderSummarySheet() {
         data: {
           name: customer.name,
           location: customer.location,
-          cart,
+          cart: orderCart,
         },
       });
       const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
