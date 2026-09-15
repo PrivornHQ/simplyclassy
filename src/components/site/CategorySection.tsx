@@ -27,7 +27,14 @@ export function CategorySection({ category }: { category: Category }) {
           <div>
             <p className="eyebrow">{category.title}</p>
             <h2 className="mt-2 text-3xl font-semibold text-foreground sm:text-4xl">
-              {category.heading}
+              {category.id === "sneakers" ? (
+                <>
+                  Nike Mind
+                  <span className="font-sans tabular-nums">001</span> Slides
+                </>
+              ) : (
+                category.heading
+              )}
             </h2>
             <p className="mt-3 max-w-2xl text-sm text-muted-foreground sm:text-base">
               {category.blurb}
