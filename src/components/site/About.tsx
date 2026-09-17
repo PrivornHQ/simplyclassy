@@ -5,7 +5,7 @@ export function About() {
         <div>
           <p className="eyebrow">About us</p>
           <h2 className="mt-2 text-3xl font-semibold text-foreground sm:text-4xl">
-            Affordable luxury, delivered nationwide in Ghana
+            Yes luxury, delivered nationwide in Ghana
           </h2>
         </div>
         <div className="space-y-4 text-sm text-muted-foreground sm:text-base">
