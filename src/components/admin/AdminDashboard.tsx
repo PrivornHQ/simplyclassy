@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Star } from "lucide-react";
+import { Search, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,27 +13,55 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { categories, formatCedis, type CategoryId, type Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
+import {
+  MAX_ORDER_ADMIN_NOTES_CHARS,
+  ORDER_STATUSES,
+  orderStatusMeta,
+  type OrderSnapshot,
+  type OrderStatus,
+} from "@/data/orders";
 import { deleteAdminProduct, saveAdminProduct } from "@/lib/catalog.functions";
+import { listAdminOrders, saveAdminOrder } from "@/lib/order.functions";
 import { deleteAdminReview } from "@/lib/review.functions";
 import { cn } from "@/lib/utils";
 import { ProductForm, type ProductFormValues } from "./ProductForm";
 
 type Mode = { type: "list" } | { type: "form"; product: Product | null };
-type AdminFilter = "all" | CategoryId | "reviews";
+type AdminFilter = "all" | CategoryId | "orders" | "reviews";
 
 const adminFilters: { id: AdminFilter; label: string }[] = [
   { id: "all", label: "All" },
+  { id: "orders", label: "Orders" },
   { id: "sneakers", label: "Slides" },
   { id: "watches", label: "Watches" },
   { id: "perfumes", label: "Perfumes" },
   { id: "reviews", label: "Reviews" },
 ];
 
+const orderStatusOptions = [
+  { id: "all", label: "All statuses" },
+  ...ORDER_STATUSES.map((id) => ({
+    id,
+    label: orderStatusMeta[id].label,
+  })),
+];
+
 export function AdminDashboard({
   products,
   reviews,
+  orders,
   loading,
   error,
   onRefresh,
@@ -41,6 +69,7 @@ export function AdminDashboard({
 }: {
   products: Product[];
   reviews: CustomerReview[];
+  orders: OrderSnapshot[];
   loading: boolean;
   error: string | null;
   onRefresh: () => Promise<void>;
@@ -53,6 +82,11 @@ export function AdminDashboard({
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [pendingReviewDelete, setPendingReviewDelete] = useState<CustomerReview | null>(null);
+  const [orderResults, setOrderResults] = useState<OrderSnapshot[]>(orders);
+  const [orderQuery, setOrderQuery] = useState("");
+  const [orderStatus, setOrderStatus] = useState<OrderStatus | "all">("all");
+  const [searchingOrders, setSearchingOrders] = useState(false);
+  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
 
   const visible = useMemo(
     () =>
@@ -62,6 +96,11 @@ export function AdminDashboard({
     [filter, products],
   );
   const showingReviews = filter === "reviews";
+  const showingOrders = filter === "orders";
+
+  useEffect(() => {
+    setOrderResults(orders);
+  }, [orders]);
 
   const save = async (values: ProductFormValues) => {
     const form = new FormData();
@@ -120,6 +159,56 @@ export function AdminDashboard({
     }
   };
 
+  const searchOrders = async () => {
+    setSearchingOrders(true);
+    try {
+      const nextOrders = await listAdminOrders({
+        data: {
+          query: orderQuery.trim() || undefined,
+          status: orderStatus,
+          limit: 100,
+        },
+      });
+      setOrderResults(nextOrders);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't search orders.");
+    } finally {
+      setSearchingOrders(false);
+    }
+  };
+
+  const saveOrder = async ({
+    order,
+    status,
+    adminNotes,
+    statusNote,
+  }: {
+    order: OrderSnapshot;
+    status: OrderStatus;
+    adminNotes: string;
+    statusNote: string;
+  }) => {
+    setSavingOrderId(order.id);
+    try {
+      const updated = await saveAdminOrder({
+        data: {
+          orderId: order.id,
+          status,
+          adminNotes,
+          statusNote,
+        },
+      });
+      setOrderResults((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      toast.success("Order updated.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't update the order.");
+    } finally {
+      setSavingOrderId(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
@@ -153,15 +242,19 @@ export function AdminDashboard({
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted-foreground">
-                {showingReviews
-                  ? reviews.length === 0
-                    ? "No reviews yet."
-                    : `${reviews.length} review${reviews.length === 1 ? "" : "s"}.`
-                  : products.length === 0
-                    ? "No products yet."
-                    : `${products.length} product${products.length === 1 ? "" : "s"} in the catalogue.`}
+                {showingOrders
+                  ? orderResults.length === 0
+                    ? "No orders found."
+                    : `${orderResults.length} order${orderResults.length === 1 ? "" : "s"} found.`
+                  : showingReviews
+                    ? reviews.length === 0
+                      ? "No reviews yet."
+                      : `${reviews.length} review${reviews.length === 1 ? "" : "s"}.`
+                    : products.length === 0
+                      ? "No products yet."
+                      : `${products.length} product${products.length === 1 ? "" : "s"} in the catalogue.`}
               </p>
-              {!showingReviews && (
+              {!showingReviews && !showingOrders && (
                 <Button
                   className="rounded-full"
                   onClick={() => setMode({ type: "form", product: null })}
@@ -192,7 +285,7 @@ export function AdminDashboard({
               </div>
             )}
 
-            {!showingReviews && !loading && !error && visible.length === 0 && (
+            {!showingOrders && !showingReviews && !loading && !error && visible.length === 0 && (
               <p className="mt-8 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
                 {products.length === 0
                   ? "The catalogue is empty. Add your first product to get started."
@@ -200,7 +293,68 @@ export function AdminDashboard({
               </p>
             )}
 
-            {!showingReviews && (
+            {showingOrders && (
+              <section className="mt-6">
+                <form
+                  className="grid gap-3 rounded-md border border-border bg-card p-4 shadow-soft lg:grid-cols-[1fr_14rem_auto]"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void searchOrders();
+                  }}
+                >
+                  <div className="space-y-2">
+                    <Label htmlFor="admin-order-search">Search orders</Label>
+                    <Input
+                      id="admin-order-search"
+                      value={orderQuery}
+                      onChange={(event) => setOrderQuery(event.target.value)}
+                      placeholder="SC-437001, customer, location or product"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select
+                      value={orderStatus}
+                      onValueChange={(value) => setOrderStatus(value as OrderStatus | "all")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {orderStatusOptions.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="submit" className="self-end rounded-full" disabled={searchingOrders}>
+                    <Search className="size-4" aria-hidden />
+                    {searchingOrders ? "Searching..." : "Search"}
+                  </Button>
+                </form>
+
+                {orderResults.length === 0 ? (
+                  <p className="mt-4 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                    Submitted orders will appear here.
+                  </p>
+                ) : (
+                  <ul className="mt-4 grid gap-4">
+                    {orderResults.map((order) => (
+                      <AdminOrderCard
+                        key={order.id}
+                        order={order}
+                        saving={savingOrderId === order.id}
+                        onSave={saveOrder}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+
+            {!showingOrders && !showingReviews && (
             <ul className="mt-6 grid gap-4">
               {visible.map((product) => (
                 <li
@@ -381,6 +535,144 @@ export function AdminDashboard({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+const formatOrderDate = (createdAt: string) =>
+  new Intl.DateTimeFormat("en-GH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(createdAt));
+
+function AdminOrderCard({
+  order,
+  saving,
+  onSave,
+}: {
+  order: OrderSnapshot;
+  saving: boolean;
+  onSave: (values: {
+    order: OrderSnapshot;
+    status: OrderStatus;
+    adminNotes: string;
+    statusNote: string;
+  }) => Promise<void>;
+}) {
+  const [status, setStatus] = useState<OrderStatus>(order.status);
+  const [adminNotes, setAdminNotes] = useState(order.adminNotes ?? "");
+  const [statusNote, setStatusNote] = useState("");
+  const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const statusChanged = status !== order.status;
+  const dirty = statusChanged || adminNotes !== (order.adminNotes ?? "");
+
+  useEffect(() => {
+    setStatus(order.status);
+    setAdminNotes(order.adminNotes ?? "");
+    setStatusNote("");
+  }, [order]);
+
+  return (
+    <li className="rounded-md border border-border bg-card p-4 shadow-soft">
+      <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-base font-semibold text-foreground">{order.orderNumber}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {order.name} - {order.location}
+              </p>
+            </div>
+            <span className="rounded-full bg-accent px-3 py-1 text-xs font-medium text-foreground">
+              {orderStatusMeta[order.status].label}
+            </span>
+          </div>
+
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">Created</dt>
+              <dd className="mt-1 font-medium">{formatOrderDate(order.createdAt)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Items</dt>
+              <dd className="mt-1 font-medium">
+                {itemCount} item{itemCount === 1 ? "" : "s"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Total</dt>
+              <dd className="mt-1 font-medium">{formatCedis(order.overallTotal)}</dd>
+            </div>
+          </dl>
+
+          <ul className="mt-4 grid gap-2">
+            {order.items.map((item) => (
+              <li key={item.productId} className="flex items-center gap-3 text-sm">
+                <img
+                  src={item.productImage}
+                  alt=""
+                  className="size-12 rounded-md bg-ash object-cover"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{item.productName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.quantity} x {formatCedis(item.unitPrice)}
+                  </p>
+                </div>
+                <p className="shrink-0 font-medium">{formatCedis(item.lineSubtotal)}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <form
+          className="grid content-start gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSave({ order, status, adminNotes, statusNote });
+          }}
+        >
+          <div className="space-y-2">
+            <Label>Status</Label>
+            <Select value={status} onValueChange={(value) => setStatus(value as OrderStatus)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ORDER_STATUSES.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {orderStatusMeta[value].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`status-note-${order.id}`}>Status note</Label>
+            <Input
+              id={`status-note-${order.id}`}
+              value={statusNote}
+              onChange={(event) => setStatusNote(event.target.value)}
+              placeholder={statusChanged ? "Optional customer-visible update" : "Change status to add note"}
+              disabled={!statusChanged || saving}
+              maxLength={240}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`admin-notes-${order.id}`}>Internal notes</Label>
+            <Textarea
+              id={`admin-notes-${order.id}`}
+              value={adminNotes}
+              onChange={(event) => setAdminNotes(event.target.value)}
+              maxLength={MAX_ORDER_ADMIN_NOTES_CHARS}
+              className="min-h-24 resize-none"
+            />
+          </div>
+          <Button type="submit" className="rounded-full" disabled={!dirty || saving}>
+            {saving ? "Saving..." : "Save order"}
+          </Button>
+        </form>
+      </div>
+    </li>
   );
 }
 

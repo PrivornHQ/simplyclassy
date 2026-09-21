@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, PackageX, ShoppingBag } from "lucide-react";
 import logoAsset from "@/assets/logo.png";
+import { OrderStatusTimeline } from "@/components/site/OrderStatusTimeline";
 import { categoryById, formatCedis } from "@/data/products";
 import { getPublicOrder } from "@/lib/order.functions";
 
@@ -144,6 +145,10 @@ function OrderPage() {
                 </dd>
               </div>
             </dl>
+
+            <div className="py-5">
+              <OrderStatusTimeline order={order} />
+            </div>
 
             <ul className="divide-y divide-border">
               {order.items.map((item) => (

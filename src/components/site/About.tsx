@@ -5,12 +5,12 @@ export function About() {
         <div>
           <p className="eyebrow">About us</p>
           <h2 className="mt-2 text-3xl font-semibold text-foreground sm:text-4xl">
-            Yes luxury, delivered nationwide in Ghana
+            Yes! Luxury, delivered nationwide in Ghana
           </h2>
         </div>
         <div className="space-y-4 text-sm text-muted-foreground sm:text-base">
           <p>
-            SimplyClassy is your home for authentic wrist watches, Nike Mind001 sneakers and
+            SimplyClassy is your home for authentic wrist watches, Nike Mind001 slides and
             long-lasting designer perfumes. We sell time, scent and style — three things that make
             an outfit feel finished.
           </p>

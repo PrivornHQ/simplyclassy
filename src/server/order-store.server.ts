@@ -1,11 +1,19 @@
 import { isCategoryId, type Product } from "@/data/products";
 import {
   MAX_ORDER_CUSTOMER_NAME_CHARS,
+  MAX_ORDER_ADMIN_NOTES_CHARS,
   MAX_ORDER_LOCATION_CHARS,
+  MAX_ORDER_STATUS_NOTE_CHARS,
   type CreateOrderCartItem,
   type CreateOrderInput,
+  type AdminOrderSearchInput,
   type OrderSnapshot,
   type OrderSnapshotItem,
+  type OrderStatus,
+  type OrderStatusHistoryEntry,
+  type PublicOrderTrackingInput,
+  type UpdateOrderInput,
+  isOrderStatus,
 } from "@/data/orders";
 import { listStoredProducts } from "@/server/catalog-store.server";
 import { getRequest } from "@tanstack/start-server-core";
@@ -14,6 +22,7 @@ const CATALOG_KV_BINDING = "simplyclassy_catalog";
 const ORDER_KEY_PREFIX = "orders/";
 const ORDER_NUMBER_COUNTER_KEY = "orders/order-number-counter.json";
 const ORDER_NUMBER_INDEX_PREFIX = "order-numbers/";
+const ORDER_INDEX_KEY = "orders/index.json";
 const FIRST_ORDER_SEQUENCE = 437001;
 const ORDER_NUMBER_PREFIX = "SC-";
 export const ORDER_RETENTION_SECONDS = 60 * 60 * 24 * 30;
@@ -23,6 +32,7 @@ type OrderPersistence = {
   setText: (key: string, value: string, expirationTtlSeconds: number) => Promise<void>;
   setTextPermanent: (key: string, value: string) => Promise<void>;
   deleteKey: (key: string) => Promise<void>;
+  listKeys: (prefix: string) => Promise<string[]>;
 };
 
 let persistencePromise: Promise<OrderPersistence> | undefined;
@@ -39,6 +49,11 @@ type OrderKVNamespace = {
     options?: { metadata?: Record<string, unknown>; expirationTtl?: number },
   ) => Promise<void>;
   delete: (key: string) => Promise<void>;
+  list?: (options?: {
+    prefix?: string;
+    cursor?: string;
+    limit?: number;
+  }) => Promise<{ keys: { name: string }[]; list_complete: boolean; cursor?: string }>;
 };
 
 type RuntimeRequest = Request & {
@@ -82,16 +97,28 @@ function createCloudflareKVPersistence(kv: OrderKVNamespace): OrderPersistence {
     async deleteKey(key) {
       await kv.delete(key);
     },
+    async listKeys(prefix) {
+      if (typeof kv.list !== "function") return [];
+      const keys: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const result = await kv.list({ prefix, cursor, limit: 1000 });
+        keys.push(...result.keys.map((item) => item.name));
+        cursor = result.list_complete ? undefined : result.cursor;
+      } while (cursor);
+      return keys;
+    },
   };
 }
 
 async function createFilePersistence(): Promise<OrderPersistence> {
-  const { mkdir, readFile, writeFile, unlink } = await import("node:fs/promises");
+  const { mkdir, readFile, writeFile, unlink, readdir } = await import("node:fs/promises");
   const { join } = await import("node:path");
   const root = join(process.cwd(), ".data", "orders");
   await mkdir(root, { recursive: true });
 
   const fileFor = (key: string) => join(root, key.replaceAll("/", "__"));
+  const keyFor = (fileName: string) => fileName.replaceAll("__", "/");
 
   return {
     async getText(key) {
@@ -124,6 +151,14 @@ async function createFilePersistence(): Promise<OrderPersistence> {
     async deleteKey(key) {
       await unlink(fileFor(key)).catch(() => undefined);
     },
+    async listKeys(prefix) {
+      try {
+        const files = await readdir(root);
+        return files.map(keyFor).filter((key) => key.startsWith(prefix));
+      } catch {
+        return [];
+      }
+    },
   };
 }
 
@@ -148,6 +183,20 @@ const formatOrderNumber = (sequence: number) => `${ORDER_NUMBER_PREFIX}${sequenc
 
 function normalizeCustomerField(value: string) {
   return value.trim().replace(/\s+/g, " ");
+}
+
+function normalizeOrderNumber(value: string) {
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  if (/^\d{6,}$/.test(normalized)) return `${ORDER_NUMBER_PREFIX}${normalized}`;
+  return normalized;
+}
+
+function sameCustomerField(left: string, right: string) {
+  return normalizeCustomerField(left).toLocaleLowerCase() === normalizeCustomerField(right).toLocaleLowerCase();
+}
+
+function truncateField(value: string, maxChars: number) {
+  return value.trim().replace(/\s+/g, " ").slice(0, maxChars);
 }
 
 function validateCustomerInfo(nameInput: string, locationInput: string) {
@@ -212,6 +261,23 @@ function parseStoredOrder(value: unknown): OrderSnapshot | null {
   const parsedItems = items.map(parseOrderItem).filter((item): item is OrderSnapshotItem => !!item);
   if (parsedItems.length !== items.length || parsedItems.length === 0) return null;
 
+  const status =
+    typeof value["status"] === "string" && isOrderStatus(value["status"])
+      ? value["status"]
+      : "pending";
+  const statusHistoryRaw = Array.isArray(value["statusHistory"]) ? value["statusHistory"] : [];
+  const statusHistory = statusHistoryRaw
+    .map(parseStatusHistoryEntry)
+    .filter((entry): entry is OrderStatusHistoryEntry => entry !== null);
+  const updatedAt =
+    typeof value["updatedAt"] === "string" && !Number.isNaN(Date.parse(value["updatedAt"]))
+      ? value["updatedAt"]
+      : undefined;
+  const adminNotes =
+    typeof value["adminNotes"] === "string"
+      ? truncateField(value["adminNotes"], MAX_ORDER_ADMIN_NOTES_CHARS)
+      : undefined;
+
   return {
     id,
     orderNumber: typeof orderNumber === "string" && isOrderNumber(orderNumber) ? orderNumber : id,
@@ -220,6 +286,30 @@ function parseStoredOrder(value: unknown): OrderSnapshot | null {
     items: parsedItems,
     overallTotal,
     createdAt,
+    ...(updatedAt ? { updatedAt } : {}),
+    status,
+    statusHistory:
+      statusHistory.length > 0
+        ? statusHistory
+        : [{ status, changedAt: createdAt, changedBy: "system" }],
+    ...(adminNotes ? { adminNotes } : {}),
+  };
+}
+
+function parseStatusHistoryEntry(value: unknown): OrderStatusHistoryEntry | null {
+  if (!isRecord(value)) return null;
+  const { status, changedAt, changedBy, note } = value;
+  if (typeof status !== "string" || !isOrderStatus(status)) return null;
+  if (typeof changedAt !== "string" || Number.isNaN(Date.parse(changedAt))) return null;
+  if (changedBy !== "system" && changedBy !== "admin") return null;
+
+  return {
+    status,
+    changedAt,
+    changedBy,
+    ...(typeof note === "string" && note.trim()
+      ? { note: truncateField(note, MAX_ORDER_STATUS_NOTE_CHARS) }
+      : {}),
   };
 }
 
@@ -273,6 +363,58 @@ async function readNextOrderSequence(store: OrderPersistence) {
   return parseNextSequence(await store.getText(ORDER_NUMBER_COUNTER_KEY));
 }
 
+function parseOrderIdIndex(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is string => typeof value === "string" && isSafeOrderId(value));
+  } catch {
+    return [];
+  }
+}
+
+async function readOrderIdIndex(store: OrderPersistence) {
+  return parseOrderIdIndex(await store.getText(ORDER_INDEX_KEY));
+}
+
+async function writeOrderIdIndex(store: OrderPersistence, orderIds: string[]) {
+  const unique = [...new Set(orderIds.filter(isSafeOrderId))];
+  await store.setTextPermanent(ORDER_INDEX_KEY, JSON.stringify(unique));
+}
+
+async function rememberOrderId(store: OrderPersistence, orderId: string) {
+  const existing = await readOrderIdIndex(store);
+  if (existing.includes(orderId)) return;
+  await writeOrderIdIndex(store, [orderId, ...existing]);
+}
+
+function orderIdFromOrderKey(key: string) {
+  if (!key.startsWith(ORDER_KEY_PREFIX) || !key.endsWith(".json")) return null;
+  if (key === ORDER_NUMBER_COUNTER_KEY || key === ORDER_INDEX_KEY) return null;
+  const id = key.slice(ORDER_KEY_PREFIX.length, -".json".length);
+  return isSafeOrderId(id) ? id : null;
+}
+
+async function discoverOrderIds(store: OrderPersistence) {
+  const [indexed, listed] = await Promise.all([
+    readOrderIdIndex(store),
+    store.listKeys(ORDER_KEY_PREFIX),
+  ]);
+  const listedIds = listed.map(orderIdFromOrderKey).filter((id): id is string => id !== null);
+  const all = [...new Set([...indexed, ...listedIds])];
+  if (all.length !== indexed.length || all.some((id, index) => id !== indexed[index])) {
+    await writeOrderIdIndex(store, all).catch(() => undefined);
+  }
+  return all;
+}
+
+async function writeOrderSnapshot(store: OrderPersistence, order: OrderSnapshot) {
+  await store.setTextPermanent(orderKey(order.id), JSON.stringify(order));
+  await store.setTextPermanent(orderNumberKey(order.orderNumber), order.id);
+  await rememberOrderId(store, order.id);
+}
+
 async function createOrderWithNumber(
   store: OrderPersistence,
   orderData: Omit<OrderSnapshot, "id" | "orderNumber">,
@@ -297,8 +439,9 @@ async function createOrderWithNumber(
       const snapshotKey = orderKey(order.id);
 
       try {
-        await store.setText(indexKey, order.id, ORDER_RETENTION_SECONDS);
-        await store.setText(snapshotKey, JSON.stringify(order), ORDER_RETENTION_SECONDS);
+        await store.setTextPermanent(indexKey, order.id);
+        await store.setTextPermanent(snapshotKey, JSON.stringify(order));
+        await rememberOrderId(store, order.id);
         await store.setTextPermanent(
           ORDER_NUMBER_COUNTER_KEY,
           JSON.stringify({
@@ -345,6 +488,14 @@ export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSn
     items: orderItems,
     overallTotal,
     createdAt: new Date().toISOString(),
+    status: "pending",
+    statusHistory: [
+      {
+        status: "pending",
+        changedAt: new Date().toISOString(),
+        changedBy: "system",
+      },
+    ],
   };
 
   const store = await getPersistence();
@@ -360,9 +511,112 @@ export async function readStoredOrder(orderId: string): Promise<OrderSnapshot | 
   if (!raw) return null;
 
   try {
-    return parseStoredOrder(JSON.parse(raw));
+    const order = parseStoredOrder(JSON.parse(raw));
+    if (order) {
+      await rememberOrderId(store, order.id).catch(() => undefined);
+    }
+    return order;
   } catch {
     await store.deleteKey(orderKey(normalized)).catch(() => undefined);
     return null;
   }
+}
+
+export async function resolveOrderNumber(orderNumberInput: string): Promise<string | null> {
+  const orderNumber = normalizeOrderNumber(orderNumberInput);
+  if (!isOrderNumber(orderNumber)) return null;
+
+  const store = await getPersistence();
+  const indexedOrderId = await store.getText(orderNumberKey(orderNumber));
+  if (indexedOrderId && isSafeOrderId(indexedOrderId.trim())) return indexedOrderId.trim();
+
+  const orders = await listStoredOrders({ query: orderNumber, status: "all", limit: 250 });
+  const order = orders.find((item) => item.orderNumber === orderNumber);
+  if (!order) return null;
+  await store.setTextPermanent(orderNumberKey(order.orderNumber), order.id).catch(() => undefined);
+  return order.id;
+}
+
+export async function readOrderForCustomerTracking(
+  input: PublicOrderTrackingInput,
+): Promise<OrderSnapshot | null> {
+  const orderId = await resolveOrderNumber(input.orderNumber);
+  if (!orderId) return null;
+  const order = await readStoredOrder(orderId);
+  if (!order) return null;
+  if (!sameCustomerField(input.name, order.name)) return null;
+  if (!sameCustomerField(input.location, order.location)) return null;
+  return order;
+}
+
+export async function listStoredOrders({
+  query = "",
+  status = "all",
+  limit = 100,
+}: AdminOrderSearchInput = {}): Promise<OrderSnapshot[]> {
+  const store = await getPersistence();
+  const orderIds = await discoverOrderIds(store);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const normalizedStatus = typeof status === "string" && isOrderStatus(status) ? status : "all";
+  const cappedLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 250) : 100;
+
+  const orders = (
+    await Promise.all(orderIds.map((orderId) => readStoredOrder(orderId).catch(() => null)))
+  ).filter((order): order is OrderSnapshot => order !== null);
+
+  return orders
+    .filter((order) => {
+      if (normalizedStatus !== "all" && order.status !== normalizedStatus) return false;
+      if (!normalizedQuery) return true;
+      const searchable = [
+        order.orderNumber,
+        order.name,
+        order.location,
+        order.id,
+        ...order.items.map((item) => item.productName),
+      ]
+        .join(" ")
+        .toLocaleLowerCase();
+      return searchable.includes(normalizedQuery);
+    })
+    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+    .slice(0, cappedLimit);
+}
+
+export async function updateStoredOrder(input: UpdateOrderInput): Promise<OrderSnapshot> {
+  const store = await getPersistence();
+  const order = await readStoredOrder(input.orderId);
+  if (!order) throw new Error("That order could not be found.");
+  if (!isOrderStatus(input.status)) throw new Error("Choose a valid order status.");
+
+  const now = new Date().toISOString();
+  const adminNotes = truncateField(input.adminNotes ?? "", MAX_ORDER_ADMIN_NOTES_CHARS);
+  const statusNote = truncateField(input.statusNote ?? "", MAX_ORDER_STATUS_NOTE_CHARS);
+  const statusChanged = order.status !== input.status;
+  const statusHistory: OrderStatusHistoryEntry[] = statusChanged
+    ? [
+        ...order.statusHistory,
+        {
+          status: input.status,
+          changedAt: now,
+          changedBy: "admin",
+          ...(statusNote ? { note: statusNote } : {}),
+        },
+      ]
+    : order.statusHistory;
+
+  const updated: OrderSnapshot = {
+    ...order,
+    status: input.status,
+    statusHistory,
+    updatedAt: now,
+    ...(adminNotes ? { adminNotes } : {}),
+  };
+
+  if (!adminNotes && "adminNotes" in updated) {
+    delete updated.adminNotes;
+  }
+
+  await writeOrderSnapshot(store, updated);
+  return updated;
 }

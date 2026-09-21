@@ -8,6 +8,7 @@ const links = [
   { href: "#perfumes", label: "Perfumes" },
   { href: "#sneakers", label: "Slides" },
   { href: "#watches", label: "Watches" },
+  { href: "/track", label: "Track" },
   { href: "#about", label: "About" },
   { href: "#reviews", label: "Reviews" },
   { href: "#faq", label: "FAQ" },

@@ -4,9 +4,11 @@ import { AdminDashboard } from "@/components/admin/AdminDashboard";
 import { AdminLogin } from "@/components/admin/AdminLogin";
 import { getAdminAuthState, loginAdmin, logoutAdmin } from "@/lib/admin-auth.functions";
 import { listAdminProducts } from "@/lib/catalog.functions";
+import { listAdminOrders } from "@/lib/order.functions";
 import { listAdminReviews } from "@/lib/review.functions";
 import type { Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
+import type { OrderSnapshot } from "@/data/orders";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -31,6 +33,7 @@ function AdminPage() {
   const [authenticated, setAuthenticated] = useState(initial.authenticated);
   const [products, setProducts] = useState<Product[]>([]);
   const [reviews, setReviews] = useState<CustomerReview[]>([]);
+  const [orders, setOrders] = useState<OrderSnapshot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,12 +41,14 @@ function AdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const [nextProducts, nextReviews] = await Promise.all([
+      const [nextProducts, nextReviews, nextOrders] = await Promise.all([
         listAdminProducts(),
         listAdminReviews(),
+        listAdminOrders({ data: { limit: 100 } }),
       ]);
       setProducts(nextProducts);
       setReviews(nextReviews);
+      setOrders(nextOrders);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Couldn't load products.";
       if (message === "Unauthorized") {
@@ -82,6 +87,7 @@ function AdminPage() {
     <AdminDashboard
       products={products}
       reviews={reviews}
+      orders={orders}
       loading={loading}
       error={error}
       onRefresh={refreshAdminData}
@@ -90,6 +96,7 @@ function AdminPage() {
         setAuthenticated(false);
         setProducts([]);
         setReviews([]);
+        setOrders([]);
       }}
     />
   );
