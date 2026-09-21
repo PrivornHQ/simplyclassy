@@ -572,8 +572,8 @@ function AdminOrderCard({
   }, [order]);
 
   return (
-    <li className="rounded-md border border-border bg-card p-4 shadow-soft">
-      <div className="grid gap-4 lg:grid-cols-[1fr_20rem]">
+    <li className="min-w-0 max-w-full rounded-md border border-border bg-card p-4 shadow-soft">
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -606,14 +606,14 @@ function AdminOrderCard({
 
           <ul className="mt-4 grid gap-2">
             {order.items.map((item) => (
-              <li key={item.productId} className="flex items-center gap-3 text-sm">
+              <li key={item.productId} className="flex min-w-0 max-w-full items-center gap-3 text-sm">
                 <img
                   src={item.productImage}
                   alt=""
-                  className="size-12 rounded-md bg-ash object-cover"
+                  className="size-12 shrink-0 rounded-md bg-ash object-cover"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{item.productName}</p>
+                  <p className="whitespace-normal break-words font-medium">{item.productName}</p>
                   <p className="text-xs text-muted-foreground">
                     {item.quantity} x {formatCedis(item.unitPrice)}
                   </p>
@@ -625,7 +625,7 @@ function AdminOrderCard({
         </div>
 
         <form
-          className="grid content-start gap-3"
+          className="grid min-w-0 content-start gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             void onSave({ order, status, adminNotes, statusNote });
