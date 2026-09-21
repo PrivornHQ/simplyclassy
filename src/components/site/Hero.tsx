@@ -8,7 +8,7 @@ export function Hero() {
     <section id="top" className="relative overflow-hidden bg-ash pt-24 pb-14 md:pt-32 md:pb-24">
       <div className="section-shell grid items-center gap-10 md:grid-cols-2 md:gap-14">
         <div>
-          <p className="eyebrow">Affordable luxury · Ghana</p>
+          <p className="eyebrow">Luxury · Ghana</p>
           <h1 className="mt-4 text-4xl leading-[1.05] font-semibold text-foreground sm:text-5xl md:text-6xl">
             SimplyClassy
           </h1>

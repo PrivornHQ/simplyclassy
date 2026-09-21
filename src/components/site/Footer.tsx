@@ -10,7 +10,7 @@ export function Footer() {
           </p>
           <p className="mt-3 max-w-sm text-sm text-white/70">
             Authentic wrist watches, Nike Mind001 Slides and long-lasting designer perfumes.
-            Affordable luxury delivered nationwide in Ghana.
+            Luxury delivered nationwide in Ghana.
           </p>
         </div>
 

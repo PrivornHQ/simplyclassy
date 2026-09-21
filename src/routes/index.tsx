@@ -16,7 +16,7 @@ import { listPublicReviews } from "@/lib/review.functions";
 const title = "SimplyClassy | Authentic Watches, Sneakers & Perfumes in Ghana";
 
 const description =
-  "SimplyClassy is your home for authentic wrist watches, Nike Mind001 Slides and long-lasting designer perfumes. Affordable luxury delivered nationwide in Ghana.";
+  "SimplyClassy is your home for authentic wrist watches, Nike Mind001 Slides and long-lasting designer perfumes. Luxury delivered nationwide in Ghana.";
 
 const organizationSchema = {
   "@context": "https://schema.org",
