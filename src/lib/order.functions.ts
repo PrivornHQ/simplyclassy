@@ -143,19 +143,25 @@ export const listAdminOrders = createServerFn({ method: "GET" })
 
 export const saveAdminOrder = createServerFn({ method: "POST" })
   .validator(
-    z.object({
-      orderId: z.string().trim().min(1).max(120),
-      status: z.string().refine(isOrderStatus, "Choose a valid order status."),
-      adminNotes: z.string().max(MAX_ORDER_ADMIN_NOTES_CHARS).optional(),
-      statusNote: z.string().max(MAX_ORDER_STATUS_NOTE_CHARS).optional(),
-    }),
+    z
+      .object({
+        orderId: z.string().trim().min(1).max(120),
+        status: z.string().refine(isOrderStatus, "Choose a valid order status.").optional(),
+        adminNotes: z.string().max(MAX_ORDER_ADMIN_NOTES_CHARS).optional(),
+        statusNote: z.string().max(MAX_ORDER_STATUS_NOTE_CHARS).optional(),
+      })
+      .refine(
+        (data) =>
+          data.status !== undefined || data.adminNotes !== undefined || data.statusNote !== undefined,
+        "Choose an order change to save.",
+      ),
   )
   .handler(async ({ data }) => {
     await requireAdminSession();
     try {
       return await updateStoredOrder({
         orderId: data.orderId,
-        status: data.status,
+        ...(data.status !== undefined ? { status: data.status } : {}),
         ...(data.adminNotes !== undefined ? { adminNotes: data.adminNotes } : {}),
         ...(data.statusNote !== undefined ? { statusNote: data.statusNote } : {}),
       });

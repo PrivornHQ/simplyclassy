@@ -583,7 +583,7 @@ export async function listStoredOrders({
   const cappedLimit = Number.isInteger(limit) ? Math.min(Math.max(limit, 1), 250) : 100;
 
   const orders = (
-    await Promise.all(orderIds.map((orderId) => readStoredOrder(orderId).catch(() => null)))
+    await Promise.all(orderIds.map((orderId) => readStoredOrder(orderId)))
   ).filter((order): order is OrderSnapshot => order !== null);
 
   return orders
@@ -613,17 +613,23 @@ async function updateOrderSnapshot(input: UpdateOrderInput): Promise<OrderSnapsh
   const store = await getPersistence();
   const order = await readStoredOrder(input.orderId);
   if (!order) throw new Error("That order could not be found.");
-  if (!isOrderStatus(input.status)) throw new Error("Choose a valid order status.");
+  if (input.status !== undefined && !isOrderStatus(input.status)) {
+    throw new Error("Choose a valid order status.");
+  }
 
   const now = new Date().toISOString();
-  const adminNotes = truncateField(input.adminNotes ?? "", MAX_ORDER_ADMIN_NOTES_CHARS);
+  const status = input.status ?? order.status;
+  const adminNotes = truncateField(
+    input.adminNotes ?? order.adminNotes ?? "",
+    MAX_ORDER_ADMIN_NOTES_CHARS,
+  );
   const statusNote = truncateField(input.statusNote ?? "", MAX_ORDER_STATUS_NOTE_CHARS);
-  const statusChanged = order.status !== input.status;
-  const statusHistory: OrderStatusHistoryEntry[] = statusChanged
+  const statusChanged = order.status !== status;
+  let statusHistory: OrderStatusHistoryEntry[] = statusChanged
     ? [
         ...order.statusHistory,
         {
-          status: input.status,
+          status,
           changedAt: now,
           changedBy: "admin",
           ...(statusNote ? { note: statusNote } : {}),
@@ -631,9 +637,18 @@ async function updateOrderSnapshot(input: UpdateOrderInput): Promise<OrderSnapsh
       ]
     : order.statusHistory;
 
+  // A note edited after an automatic status save belongs to the current history entry.
+  if (!statusChanged && input.statusNote !== undefined) {
+    statusHistory = statusHistory.map((entry, index) => {
+      if (index !== statusHistory.length - 1) return entry;
+      const { note: previousNote, ...historyEntry } = entry;
+      return { ...historyEntry, ...(statusNote ? { note: statusNote } : {}) };
+    });
+  }
+
   const updated: OrderSnapshot = {
     ...order,
-    status: input.status,
+    status,
     statusHistory,
     updatedAt: now,
     ...(adminNotes ? { adminNotes } : {}),

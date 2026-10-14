@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
-import { Search, Star, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useBlocker } from "@tanstack/react-router";
+import { Check, LoaderCircle, RotateCw, Search, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import { categories, formatCedis, type CategoryId, type Product } from "@/data/p
 import type { CustomerReview } from "@/data/reviews";
 import {
   MAX_ORDER_ADMIN_NOTES_CHARS,
+  MAX_ORDER_STATUS_NOTE_CHARS,
   ORDER_STATUSES,
   orderStatusMeta,
   type OrderSnapshot,
@@ -39,6 +40,7 @@ import {
   listAdminOrders,
   saveAdminOrder,
 } from "@/lib/order.functions";
+import { createOrderAutosave, type OrderChanges, type OrderSaveState } from "@/lib/order-autosave";
 import { deleteAdminReview } from "@/lib/review.functions";
 import { cn } from "@/lib/utils";
 import { ProductForm, type ProductFormValues } from "./ProductForm";
@@ -91,13 +93,56 @@ export function AdminDashboard({
   const [orderQuery, setOrderQuery] = useState("");
   const [orderStatus, setOrderStatus] = useState<OrderStatus | "all">("all");
   const [searchingOrders, setSearchingOrders] = useState(false);
-  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [orderSaveStates, setOrderSaveStates] = useState<Record<string, OrderSaveState>>({});
+  const [signingOut, setSigningOut] = useState(false);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [pendingOrderDelete, setPendingOrderDelete] = useState<OrderSnapshot | null>(null);
   const [pendingClearOrders, setPendingClearOrders] = useState<OrderSnapshot[]>([]);
   const [clearingOrders, setClearingOrders] = useState(false);
   const deletedOrderIds = useRef(new Set<string>());
-  const orderMutationBusy = savingOrderId !== null || deletingOrderId !== null || clearingOrders;
+  const confirmedOrders = useRef(new Map<string, OrderSnapshot>());
+  const [orderAutosave] = useState(() =>
+    createOrderAutosave({
+      save: (input) => saveAdminOrder({ data: input }),
+      onSaved: (updated) => {
+        if (deletedOrderIds.current.has(updated.id)) return;
+        confirmedOrders.current.set(updated.id, updated);
+        setOrderResults((current) =>
+          current.map((order) => (order.id === updated.id ? updated : order)),
+        );
+      },
+      onStateChange: (id, state) => setOrderSaveStates((current) => ({ ...current, [id]: state })),
+      onError: (message) => toast.error(message),
+    }),
+  );
+  const savingOrders = Object.values(orderSaveStates).some((state) => state.phase === "saving");
+  const orderMutationBusy = savingOrders || deletingOrderId !== null || clearingOrders || signingOut;
+
+  const reconcileOrders = useCallback(
+    (incoming: OrderSnapshot[]) =>
+      incoming
+        .filter((order) => !deletedOrderIds.current.has(order.id))
+        .map((order) => {
+          const confirmed = confirmedOrders.current.get(order.id);
+          return confirmed &&
+            Date.parse(confirmed.updatedAt ?? confirmed.createdAt) >=
+              Date.parse(order.updatedAt ?? order.createdAt)
+            ? confirmed
+            : order;
+        }),
+    [],
+  );
+
+  const blockPendingSaves = useCallback(async () => {
+    if (await orderAutosave.flush()) return false;
+    toast.error("Some order changes could not be saved. Retry the failed changes before leaving.");
+    return true;
+  }, [orderAutosave]);
+
+  useBlocker({
+    shouldBlockFn: blockPendingSaves,
+    enableBeforeUnload: orderAutosave.hasPendingChanges,
+  });
 
   const visible = useMemo(
     () =>
@@ -110,8 +155,8 @@ export function AdminDashboard({
   const showingOrders = filter === "orders";
 
   useEffect(() => {
-    setOrderResults(orders.filter((order) => !deletedOrderIds.current.has(order.id)));
-  }, [orders]);
+    setOrderResults(reconcileOrders(orders));
+  }, [orders, reconcileOrders]);
 
   const save = async (values: ProductFormValues) => {
     const form = new FormData();
@@ -171,6 +216,7 @@ export function AdminDashboard({
   };
 
   const searchOrders = async () => {
+    if (await blockPendingSaves()) return;
     setSearchingOrders(true);
     try {
       const nextOrders = await listAdminOrders({
@@ -180,7 +226,7 @@ export function AdminDashboard({
           limit: 100,
         },
       });
-      setOrderResults(nextOrders.filter((order) => !deletedOrderIds.current.has(order.id)));
+      setOrderResults(reconcileOrders(nextOrders));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't search orders.");
     } finally {
@@ -188,40 +234,15 @@ export function AdminDashboard({
     }
   };
 
-  const saveOrder = async ({
-    order,
-    status,
-    adminNotes,
-    statusNote,
-  }: {
-    order: OrderSnapshot;
-    status: OrderStatus;
-    adminNotes: string;
-    statusNote: string;
-  }) => {
-    setSavingOrderId(order.id);
-    try {
-      const updated = await saveAdminOrder({
-        data: {
-          orderId: order.id,
-          status,
-          adminNotes,
-          statusNote,
-        },
-      });
-      setOrderResults((current) =>
-        current.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      toast.success("Order updated.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't update the order.");
-    } finally {
-      setSavingOrderId(null);
-    }
-  };
-
   const removeDeletedOrders = (ids: string[]) => {
     for (const id of ids) deletedOrderIds.current.add(id);
+    orderAutosave.forget(ids);
+    for (const id of ids) confirmedOrders.current.delete(id);
+    setOrderSaveStates((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(([id]) => !deletedOrderIds.current.has(id)),
+      ),
+    );
     setOrderResults((current) => current.filter((order) => !deletedOrderIds.current.has(order.id)));
   };
 
@@ -265,6 +286,17 @@ export function AdminDashboard({
     }
   };
 
+  const signOut = async () => {
+    setSigningOut(true);
+    try {
+      if (!(await blockPendingSaves())) await onLogout();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't sign out. Please try again.");
+    } finally {
+      setSigningOut(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
@@ -277,8 +309,12 @@ export function AdminDashboard({
             <Button variant="outline" asChild>
               <Link to="/">View site</Link>
             </Button>
-            <Button variant="outline" onClick={() => void onLogout()}>
-              Sign out
+            <Button
+              variant="outline"
+              disabled={signingOut || deletingOrderId !== null || clearingOrders}
+              onClick={() => void signOut()}
+            >
+              {signingOut ? "Signing out..." : "Sign out"}
             </Button>
           </div>
         </div>
@@ -419,10 +455,14 @@ export function AdminDashboard({
                       <AdminOrderCard
                         key={order.id}
                         order={order}
-                        saving={savingOrderId === order.id}
+                        saveState={orderSaveStates[order.id]}
                         deleting={deletingOrderId === order.id || clearingOrders}
                         busy={orderMutationBusy || searchingOrders || loading}
-                        onSave={saveOrder}
+                        editingDisabled={
+                          deletingOrderId !== null || clearingOrders || signingOut || loading
+                        }
+                        onChange={(changes) => orderAutosave.change(order.id, changes)}
+                        onRetry={() => orderAutosave.retry(order.id)}
                         onDelete={setPendingOrderDelete}
                       />
                     ))}
@@ -681,36 +721,27 @@ const formatOrderDate = (createdAt: string) =>
 
 function AdminOrderCard({
   order,
-  saving,
+  saveState,
   deleting,
   busy,
-  onSave,
+  editingDisabled,
+  onChange,
+  onRetry,
   onDelete,
 }: {
   order: OrderSnapshot;
-  saving: boolean;
+  saveState: OrderSaveState | undefined;
   deleting: boolean;
   busy: boolean;
+  editingDisabled: boolean;
   onDelete: (order: OrderSnapshot) => void;
-  onSave: (values: {
-    order: OrderSnapshot;
-    status: OrderStatus;
-    adminNotes: string;
-    statusNote: string;
-  }) => Promise<void>;
+  onChange: (changes: OrderChanges) => void;
+  onRetry: () => void;
 }) {
-  const [status, setStatus] = useState<OrderStatus>(order.status);
-  const [adminNotes, setAdminNotes] = useState(order.adminNotes ?? "");
-  const [statusNote, setStatusNote] = useState("");
+  const status = saveState?.changes.status ?? order.status;
+  const adminNotes = saveState?.changes.adminNotes ?? order.adminNotes ?? "";
+  const statusNote = saveState?.changes.statusNote ?? order.statusHistory.at(-1)?.note ?? "";
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  const statusChanged = status !== order.status;
-  const dirty = statusChanged || adminNotes !== (order.adminNotes ?? "");
-
-  useEffect(() => {
-    setStatus(order.status);
-    setAdminNotes(order.adminNotes ?? "");
-    setStatusNote("");
-  }, [order]);
 
   return (
     <li className="min-w-0 max-w-full rounded-md border border-border bg-card p-4 shadow-soft">
@@ -765,17 +796,18 @@ function AdminOrderCard({
           </ul>
         </div>
 
-        <form
+        <div
           className="grid min-w-0 content-start gap-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onSave({ order, status, adminNotes, statusNote });
-          }}
+          aria-busy={saveState?.phase === "saving"}
         >
           <div className="space-y-2">
-            <Label>Status</Label>
-            <Select value={status} onValueChange={(value) => setStatus(value as OrderStatus)}>
-              <SelectTrigger>
+            <Label htmlFor={`order-status-${order.id}`}>Status</Label>
+            <Select
+              value={status}
+              disabled={editingDisabled}
+              onValueChange={(value) => onChange({ status: value as OrderStatus, statusNote: "" })}
+            >
+              <SelectTrigger id={`order-status-${order.id}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -792,10 +824,10 @@ function AdminOrderCard({
             <Input
               id={`status-note-${order.id}`}
               value={statusNote}
-              onChange={(event) => setStatusNote(event.target.value)}
-              placeholder={statusChanged ? "Optional customer-visible update" : "Change status to add note"}
-              disabled={!statusChanged || saving}
-              maxLength={240}
+              onChange={(event) => onChange({ statusNote: event.target.value })}
+              placeholder="Optional customer-visible update"
+              disabled={editingDisabled}
+              maxLength={MAX_ORDER_STATUS_NOTE_CHARS}
             />
           </div>
           <div className="space-y-2">
@@ -803,14 +835,38 @@ function AdminOrderCard({
             <Textarea
               id={`admin-notes-${order.id}`}
               value={adminNotes}
-              onChange={(event) => setAdminNotes(event.target.value)}
+              onChange={(event) => onChange({ adminNotes: event.target.value })}
+              disabled={editingDisabled}
               maxLength={MAX_ORDER_ADMIN_NOTES_CHARS}
               className="min-h-24 resize-none"
             />
           </div>
-          <Button type="submit" className="rounded-full" disabled={!dirty || busy}>
-            {saving ? "Saving..." : "Save order"}
-          </Button>
+          {saveState && saveState.phase !== "error" && (
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+              {saveState.phase === "saving" ? (
+                <LoaderCircle className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Check className="size-4" aria-hidden />
+              )}
+              {saveState.phase === "saving" ? "Saving..." : "Saved"}
+            </p>
+          )}
+          {saveState?.phase === "error" && (
+            <div role="alert" className="flex items-start gap-2 text-sm text-destructive">
+              <p className="min-w-0 flex-1 break-words">{saveState.error}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="Retry saving"
+                aria-label={`Retry saving ${order.orderNumber}`}
+                disabled={editingDisabled}
+                onClick={onRetry}
+              >
+                <RotateCw className="size-4" aria-hidden />
+              </Button>
+            </div>
+          )}
           <Button
             type="button"
             variant="destructive"
@@ -820,7 +876,7 @@ function AdminOrderCard({
             <Trash2 className="size-4" aria-hidden />
             {deleting ? "Deleting..." : "Delete order"}
           </Button>
-        </form>
+        </div>
       </div>
     </li>
   );

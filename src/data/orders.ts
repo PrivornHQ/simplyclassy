@@ -73,7 +73,7 @@ export type AdminOrderSearchInput = {
 
 export type UpdateOrderInput = {
   orderId: string;
-  status: OrderStatus;
+  status?: OrderStatus;
   adminNotes?: string;
   statusNote?: string;
 };

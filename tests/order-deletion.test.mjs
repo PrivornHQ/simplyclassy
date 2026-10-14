@@ -30,13 +30,13 @@ async function loadModule(path, dependencies = {}, cwd = process.cwd()) {
 
 const orderData = await loadModule("src/data/orders.ts");
 
-async function loadStore(kv, cwd) {
+async function loadStore(kv, cwd, products = []) {
   return loadModule(
     "src/server/order-store.server.ts",
     {
       "@/data/products": { isCategoryId: (id) => ["sneakers", "watches", "perfumes"].includes(id) },
       "@/data/orders": orderData,
-      "@/server/catalog-store.server": { listStoredProducts: async () => [] },
+      "@/server/catalog-store.server": { listStoredProducts: async () => products },
       "@tanstack/start-server-core": {
         getRequest: () => ({ runtime: { cloudflare: { env: { simplyclassy_catalog: kv } } } }),
       },
@@ -302,11 +302,19 @@ test("delete and clear endpoints require admin authorization and validate the co
   });
   await assert.rejects(endpoints.deleteAdminOrder({ data: { orderId: order.id } }), /Unauthorized/);
   await assert.rejects(
+    endpoints.saveAdminOrder({ data: { orderId: order.id, status: "confirmed" } }),
+    /Unauthorized/,
+  );
+  await assert.rejects(
     endpoints.clearAdminOrders({ data: { orderIds: [order.id] } }),
     /Unauthorized/,
   );
   assert.ok(await store.readStoredOrder(order.id));
   authorized = true;
+  await assert.rejects(endpoints.saveAdminOrder({ data: { orderId: order.id } }), /change to save/);
+  await endpoints.saveAdminOrder({ data: { orderId: order.id, adminNotes: "Keep these notes" } });
+  await endpoints.saveAdminOrder({ data: { orderId: order.id, status: "confirmed" } });
+  assert.equal((await store.readStoredOrder(order.id)).adminNotes, "Keep these notes");
   await assert.rejects(endpoints.clearAdminOrders({ data: { orderIds: [order.id, "../unsafe"] } }));
   assert.ok(await store.readStoredOrder(order.id));
   kv.failPut = `deleted-orders/${order.id}.json`;
@@ -315,4 +323,244 @@ test("delete and clear endpoints require admin authorization and validate the co
   assert.deepEqual(await endpoints.deleteAdminOrder({ data: { orderId: order.id } }), {
     deletedId: order.id,
   });
+});
+
+function deferred() {
+  let resolve;
+  const promise = new Promise((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+const testProduct = {
+  id: "watch",
+  name: "Watch",
+  category: "watches",
+  price: 20,
+  image: "/watch.jpg",
+  available: true,
+};
+
+test("customer submission waits for persistent storage and survives a fresh session", async () => {
+  const kv = memoryKV([]);
+  const snapshotStarted = deferred();
+  const allowWrite = deferred();
+  const originalPut = kv.put.bind(kv);
+  kv.put = async (key, value) => {
+    if (
+      key.startsWith("orders/") &&
+      key !== "orders/index.json" &&
+      key !== "orders/order-number-counter.json"
+    ) {
+      snapshotStarted.resolve();
+      await allowWrite.promise;
+    }
+    await originalPut(key, value);
+  };
+  const store = await loadStore(kv, undefined, [testProduct]);
+  let completed = false;
+  const creation = store
+    .createStoredOrder({
+      name: "Test Customer",
+      location: "Accra",
+      cart: [
+        { productId: "watch", quantity: 1 },
+        { productId: "watch", quantity: 2 },
+      ],
+    })
+    .then((order) => {
+      completed = true;
+      return order;
+    });
+  await snapshotStarted.promise;
+  assert.equal(completed, false);
+  allowWrite.resolve();
+  const order = await creation;
+  const fresh = await loadStore(kv);
+  assert.equal((await fresh.readStoredOrder(order.id)).overallTotal, 60);
+  assert.equal((await fresh.readOrderForCustomerTracking(order)).id, order.id);
+  assert.deepEqual(
+    (await fresh.listStoredOrders()).map((item) => item.id),
+    [order.id],
+  );
+});
+
+test("customer submission reports a persistence failure without returning a successful order", async () => {
+  const kv = memoryKV([]);
+  kv.failPut = "orders/order-number-counter.json";
+  const store = await loadStore(kv, undefined, [testProduct]);
+  await assert.rejects(
+    store.createStoredOrder({
+      name: "Test Customer",
+      location: "Accra",
+      cart: [{ productId: "watch", quantity: 1 }],
+    }),
+    /Storage write failed/,
+  );
+  assert.deepEqual(await (await loadStore(kv)).listStoredOrders(), []);
+  assert.equal(
+    [...kv.values.keys()].some((key) => key.startsWith("order-numbers/")),
+    false,
+  );
+});
+
+test("field updates preserve other fields and notes can follow a saved status change", async () => {
+  const original = snapshot("order-one", 437001);
+  original.adminNotes = "Keep the gift wrapping";
+  const kv = memoryKV([original]);
+  const store = await loadStore(kv);
+  await store.updateStoredOrder({ orderId: original.id, status: "confirmed" });
+  const confirmed = await store.readStoredOrder(original.id);
+  assert.equal(confirmed.adminNotes, original.adminNotes);
+  await store.updateStoredOrder({ orderId: original.id, statusNote: "Pickup tomorrow" });
+  let saved = await (await loadStore(kv)).readStoredOrder(original.id);
+  assert.equal(saved.status, "confirmed");
+  assert.equal(saved.adminNotes, original.adminNotes);
+  assert.equal(saved.statusHistory.length, 2);
+  assert.equal(saved.statusHistory.at(-1).note, "Pickup tomorrow");
+  assert.equal(saved.statusHistory.at(-1).changedAt, confirmed.statusHistory.at(-1).changedAt);
+  await store.updateStoredOrder({ orderId: original.id, adminNotes: "New internal note" });
+  saved = await store.readStoredOrder(original.id);
+  assert.equal(saved.statusHistory.at(-1).note, "Pickup tomorrow");
+  await store.updateStoredOrder({ orderId: original.id, adminNotes: "", statusNote: "" });
+  saved = await store.readStoredOrder(original.id);
+  assert.equal(saved.adminNotes, undefined);
+  assert.equal(saved.statusHistory.at(-1).note, undefined);
+});
+
+test("order loading reports storage failures instead of displaying an empty list", async () => {
+  const order = snapshot("order-one", 437001);
+  const kv = memoryKV([order]);
+  const originalGet = kv.get.bind(kv);
+  kv.get = async (key) => {
+    if (key === `orders/${order.id}.json`) throw new Error("Storage unavailable");
+    return originalGet(key);
+  };
+  const store = await loadStore(kv);
+  await assert.rejects(store.listStoredOrders(), /Storage unavailable/);
+});
+
+const { createOrderAutosave } = await loadModule("src/lib/order-autosave.ts");
+
+function autosaveHarness(save) {
+  const states = new Map();
+  const saved = [];
+  const errors = [];
+  const autosave = createOrderAutosave({
+    save,
+    onSaved: (order) => saved.push(order),
+    onStateChange: (id, state) => states.set(id, state),
+    onError: (message) => errors.push(message),
+  });
+  return { autosave, states, saved, errors };
+}
+
+test("automatic saving coalesces rapid edits and confirms only server-saved values", async () => {
+  const order = snapshot("order-one", 437001);
+  const kv = memoryKV([order]);
+  const store = await loadStore(kv);
+  const firstResponse = deferred();
+  const secondStarted = deferred();
+  const secondResponse = deferred();
+  const calls = [];
+  const { autosave, states, saved } = autosaveHarness(async (input) => {
+    calls.push(input);
+    if (calls.length === 1) await firstResponse.promise;
+    else {
+      secondStarted.resolve();
+      await secondResponse.promise;
+    }
+    return store.updateStoredOrder(input);
+  });
+  autosave.change(order.id, { status: "confirmed", statusNote: "" });
+  autosave.change(order.id, { adminNotes: "Gift" });
+  autosave.change(order.id, { adminNotes: "Gift wrapping" });
+  autosave.change(order.id, { status: "ready", statusNote: "Pickup tomorrow" });
+  assert.equal(calls.length, 1);
+  assert.equal(saved.length, 0);
+  assert.equal(states.get(order.id).phase, "saving");
+  assert.equal(states.get(order.id).changes.status, "ready");
+  let navigationReady = false;
+  const navigation = autosave.flush().then((success) => {
+    navigationReady = success;
+  });
+  firstResponse.resolve();
+  await secondStarted.promise;
+  assert.equal(navigationReady, false);
+  assert.equal(states.get(order.id).changes.adminNotes, "Gift wrapping");
+  secondResponse.resolve();
+  await navigation;
+  assert.equal(calls.length, 2);
+  assert.equal(navigationReady, true);
+  assert.equal(states.get(order.id).phase, "saved");
+  assert.deepEqual(states.get(order.id).changes, {});
+  const persisted = await (await loadStore(kv)).readStoredOrder(order.id);
+  assert.equal(persisted.status, "ready");
+  assert.equal(persisted.adminNotes, "Gift wrapping");
+  assert.equal(persisted.statusHistory.at(-1).note, "Pickup tomorrow");
+});
+
+test("failed automatic saves retain drafts, block leaving, and allow a retry", async () => {
+  const order = snapshot("order-one", 437001);
+  const kv = memoryKV([order]);
+  const store = await loadStore(kv);
+  kv.failPut = `orders/${order.id}.json`;
+  const { autosave, states, saved, errors } = autosaveHarness((input) =>
+    store.updateStoredOrder(input),
+  );
+  autosave.change(order.id, { status: "cancelled" });
+  assert.equal(await autosave.flush(), false);
+  assert.equal(saved.length, 0);
+  assert.equal(errors.length, 1);
+  assert.equal(states.get(order.id).phase, "error");
+  assert.equal(states.get(order.id).changes.status, "cancelled");
+  assert.equal(autosave.hasPendingChanges(), true);
+  assert.equal((await store.readStoredOrder(order.id)).status, "pending");
+  kv.failPut = null;
+  autosave.retry(order.id);
+  assert.equal(await autosave.flush(), true);
+  assert.equal(states.get(order.id).phase, "saved");
+  assert.equal((await (await loadStore(kv)).readStoredOrder(order.id)).status, "cancelled");
+});
+
+test("edits made during a failed request retain the latest value for retry", async () => {
+  const order = snapshot("order-one", 437001);
+  const response = deferred();
+  let failing = true;
+  const calls = [];
+  const { autosave, states, saved } = autosaveHarness(async (input) => {
+    calls.push(input);
+    await response.promise;
+    if (failing) throw new Error("Offline");
+    return { ...order, ...input };
+  });
+  autosave.change(order.id, { adminNotes: "Old draft" });
+  autosave.change(order.id, { adminNotes: "Latest draft" });
+  response.resolve();
+  assert.equal(await autosave.flush(), false);
+  assert.equal(states.get(order.id).changes.adminNotes, "Latest draft");
+  failing = false;
+  autosave.retry(order.id);
+  assert.equal(await autosave.flush(), true);
+  assert.equal(calls.at(-1).adminNotes, "Latest draft");
+  assert.equal(saved.at(-1).adminNotes, "Latest draft");
+});
+
+test("discarding a deleted order prevents late autosave results from restoring it", async () => {
+  const order = snapshot("order-one", 437001);
+  const response = deferred();
+  const { autosave, saved, states } = autosaveHarness(async () => {
+    await response.promise;
+    return order;
+  });
+  autosave.change(order.id, { status: "confirmed" });
+  const finish = autosave.flush();
+  const lastState = states.get(order.id);
+  autosave.forget([order.id]);
+  response.resolve();
+  assert.equal(await finish, true);
+  assert.equal(saved.length, 0);
+  assert.equal(states.get(order.id), lastState);
+  assert.equal(autosave.hasPendingChanges(), false);
 });
