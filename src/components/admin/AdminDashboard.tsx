@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useBlocker } from "@tanstack/react-router";
+import { Link, useBlocker, useRouter } from "@tanstack/react-router";
 import { Check, LoaderCircle, RotateCw, Search, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { categories, formatCedis, type CategoryId, type Product } from "@/data/products";
+import { categories, formatCedis, orderLineKey, type CategoryId, type Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
 import {
   MAX_ORDER_ADMIN_NOTES_CHARS,
@@ -82,6 +82,7 @@ export function AdminDashboard({
   onRefresh: () => Promise<void>;
   onLogout: () => Promise<void>;
 }) {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>({ type: "list" });
   const [filter, setFilter] = useState<AdminFilter>("all");
   const [saving, setSaving] = useState(false);
@@ -169,6 +170,20 @@ export function AdminDashboard({
     form.set("available", values.available ? "true" : "false");
     form.set("badge", values.badge ?? "");
     if (values.imageFile) form.set("image", values.imageFile);
+    form.set("colors", JSON.stringify({
+      colors: values.colors.map((color) => ({
+        id: color.id,
+        name: color.name.trim(),
+        ...(color.swatch ? { swatch: color.swatch } : {}),
+        images: color.images.map((image) => {
+          if (typeof image.value === "string") return { url: image.value };
+          const uploadKey = `color-image-${color.id}-${image.id}`;
+          form.set(uploadKey, image.value);
+          return { uploadKey };
+        }),
+      })),
+      ...(values.colors.length > 0 ? { defaultColorId: values.defaultColorId } : {}),
+    }));
 
     setSaving(true);
     try {
@@ -176,6 +191,7 @@ export function AdminDashboard({
       toast.success(existing ? "Product updated." : "Product added.");
       setMode({ type: "list" });
       await onRefresh();
+      await router.invalidate();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't save the product.");
     } finally {
@@ -192,6 +208,7 @@ export function AdminDashboard({
       toast.success("Product deleted.");
       setPendingDelete(null);
       await onRefresh();
+      await router.invalidate();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't delete the product.");
     } finally {
@@ -778,7 +795,7 @@ function AdminOrderCard({
 
           <ul className="mt-4 grid gap-2">
             {order.items.map((item) => (
-              <li key={item.productId} className="flex min-w-0 max-w-full items-center gap-3 text-sm">
+              <li key={orderLineKey(item.productId, item.colorId)} className="flex min-w-0 max-w-full items-center gap-3 text-sm">
                 <img
                   src={item.productImage}
                   alt=""
@@ -786,6 +803,7 @@ function AdminOrderCard({
                 />
                 <div className="min-w-0 flex-1">
                   <p className="whitespace-normal break-words font-medium">{item.productName}</p>
+                  {item.colorName && <p className="break-words text-xs text-muted-foreground">Color: {item.colorName}</p>}
                   <p className="text-xs text-muted-foreground">
                     {item.quantity} x {formatCedis(item.unitPrice)}
                   </p>

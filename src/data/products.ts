@@ -8,6 +8,18 @@ export type ProductBadge = "New Arrival" | "Best Seller" | null;
 
 export type CategoryId = "perfumes" | "sneakers" | "watches";
 
+export type ProductColor = {
+  id: string;
+  name: string;
+  swatch?: string;
+  images: string[];
+};
+
+export const MAX_PRODUCT_COLORS = 24;
+export const MAX_COLOR_IMAGES = 8;
+export const MAX_PRODUCT_IMAGE_BYTES = 4 * 1024 * 1024;
+export const MAX_PRODUCT_UPLOAD_BYTES = 24 * 1024 * 1024;
+
 export type Product = {
   id: string;
   name: string;
@@ -19,7 +31,21 @@ export type Product = {
   available: boolean;
   createdAt: string; // ISO date, used for "Newest" sorting
   description?: string;
+  colors?: ProductColor[];
+  defaultColorId?: string;
 };
+
+export const getDefaultProductColor = (product: Product) =>
+  product.colors?.find((color) => color.id === product.defaultColorId) ?? product.colors?.[0];
+
+export const getProductGallery = (product: Product, colorId?: string) =>
+  (colorId
+    ? product.colors?.find((color) => color.id === colorId)
+    : getDefaultProductColor(product)
+  )?.images ?? [product.image];
+
+export const orderLineKey = (productId: string, colorId?: string) =>
+  JSON.stringify([productId, colorId ?? null]);
 
 export type CategoryMeta = {
   id: CategoryId;
@@ -216,6 +242,7 @@ export type WhatsAppOrderSummary = {
   orderUrl: string;
   itemCount: number;
   total: number;
+  items?: { productName: string; colorName?: string; quantity: number; unitPrice: number }[];
 };
 
 export const formatWhatsAppCedis = formatCedis;
@@ -227,6 +254,7 @@ export const orderWhatsAppLink = ({
   orderUrl,
   itemCount,
   total,
+  items,
 }: WhatsAppOrderSummary) => {
   const message = [
     "Hi SimplyClassy, I'd like to place an order:",
@@ -236,6 +264,10 @@ export const orderWhatsAppLink = ({
     `Location: ${location}`,
     "",
     `Items: ${itemCount}`,
+    ...(items?.map(
+      (item) =>
+        `${item.quantity} x ${item.productName}${item.colorName ? ` (${item.colorName})` : ""} - ${formatWhatsAppCedis(item.unitPrice)}`,
+    ) ?? []),
     `Total: ${formatWhatsAppCedis(total)}`,
     "",
     "View full order:",

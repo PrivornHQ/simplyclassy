@@ -1,6 +1,7 @@
 import type { Product } from "@/data/products";
 import { isCategoryId, seedProducts } from "@/data/products";
 import { getRequest } from "@tanstack/start-server-core";
+import { productColorsSchema } from "@/lib/product-variants";
 
 const CATALOG_KV_BINDING = "simplyclassy_catalog";
 const PRODUCTS_KEY = "products.json";
@@ -20,6 +21,13 @@ type CatalogPersistence = {
 
 let persistencePromise: Promise<CatalogPersistence> | undefined;
 let seedLock: Promise<void> | undefined;
+let mutationLock: Promise<unknown> = Promise.resolve();
+
+export function withCatalogMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const run = mutationLock.then(mutation);
+  mutationLock = run.catch(() => undefined);
+  return run;
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -55,10 +63,10 @@ type RuntimeRequest = Request & {
 
 const isCatalogKVNamespace = (value: unknown): value is CatalogKVNamespace =>
   isRecord(value) &&
-  typeof value.get === "function" &&
-  typeof value.getWithMetadata === "function" &&
-  typeof value.put === "function" &&
-  typeof value.delete === "function";
+  typeof value["get"] === "function" &&
+  typeof value["getWithMetadata"] === "function" &&
+  typeof value["put"] === "function" &&
+  typeof value["delete"] === "function";
 
 function getCatalogKVBinding(): CatalogKVNamespace | null {
   try {
@@ -97,7 +105,7 @@ function createCloudflareKVPersistence(kv: CatalogKVNamespace): CatalogPersisten
 }
 
 async function createFilePersistence(): Promise<CatalogPersistence> {
-  const { mkdir, readFile, writeFile, unlink } = await import("node:fs/promises");
+  const { mkdir, readFile, writeFile, unlink, rename } = await import("node:fs/promises");
   const { join } = await import("node:path");
   const root = join(process.cwd(), ".data", "catalog");
   await mkdir(root, { recursive: true });
@@ -109,12 +117,19 @@ async function createFilePersistence(): Promise<CatalogPersistence> {
     async getText(key) {
       try {
         return await readFile(fileFor(key), "utf8");
-      } catch {
-        return null;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
       }
     },
     async setText(key, value) {
-      await writeFile(fileFor(key), value, "utf8");
+      const temporary = `${fileFor(key)}.tmp-${crypto.randomUUID()}`;
+      try {
+        await writeFile(temporary, value, "utf8");
+        await rename(temporary, fileFor(key));
+      } finally {
+        await unlink(temporary).catch(() => undefined);
+      }
     },
     async getBytes(key) {
       try {
@@ -183,6 +198,21 @@ function parseProduct(value: unknown): Product | null {
     product.description = value["description"].trim();
   }
 
+  if (value["colors"] !== undefined) {
+    const colors = productColorsSchema.parse(value["colors"]);
+    if (colors.length > 0) {
+      product.colors = colors.map(({ swatch, ...color }) => ({
+        ...color,
+        ...(swatch ? { swatch } : {}),
+      }));
+      const defaultId = value["defaultColorId"];
+      product.defaultColorId =
+        typeof defaultId === "string" && colors.some((color) => color.id === defaultId)
+          ? defaultId
+          : colors[0]!.id;
+    }
+  }
+
   return product;
 }
 
@@ -191,11 +221,13 @@ async function readProductsRaw(store: CatalogPersistence): Promise<Product[] | n
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return null;
+    if (!Array.isArray(parsed)) throw new Error("The stored catalogue is not a product list.");
     const products = parsed.map(parseProduct).filter((p): p is Product => p !== null);
+    if (products.length !== parsed.length)
+      throw new Error("Some stored products could not be read.");
     return products;
   } catch {
-    return null;
+    throw new Error("The catalogue could not be read. Please try again.");
   }
 }
 
@@ -203,7 +235,7 @@ async function ensureSeeded(store: CatalogPersistence): Promise<void> {
   if (!seedLock) {
     seedLock = (async () => {
       const existing = await readProductsRaw(store);
-      if (existing && existing.length > 0) return;
+      if (existing !== null) return;
       await store.setText(PRODUCTS_KEY, JSON.stringify(seedProducts));
     })().finally(() => {
       seedLock = undefined;
@@ -216,7 +248,8 @@ export async function listStoredProducts(): Promise<Product[]> {
   const store = await getPersistence();
   await ensureSeeded(store);
   const products = await readProductsRaw(store);
-  return products ?? [...seedProducts];
+  if (products === null) throw new Error("The catalogue could not be loaded. Please try again.");
+  return products;
 }
 
 export async function writeStoredProducts(products: Product[]): Promise<void> {

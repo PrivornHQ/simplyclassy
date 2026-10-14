@@ -34,34 +34,23 @@ import {
   categoryById,
   formatCedis,
   orderWhatsAppLink,
-  type CategoryId,
+  orderLineKey,
   type Product,
 } from "@/data/products";
-import {
-  MAX_ORDER_CUSTOMER_NAME_CHARS,
-  MAX_ORDER_LOCATION_CHARS,
-} from "@/data/orders";
+import { MAX_ORDER_CUSTOMER_NAME_CHARS, MAX_ORDER_LOCATION_CHARS } from "@/data/orders";
 import { createOrder } from "@/lib/order.functions";
+import { addProductToCart, parseStoredCartItems, type OrderCartItem } from "@/lib/order-cart";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "simplyclassy-order-cart";
 const LOCATION_ADDRESS_PATTERN = /[\d#]/;
-
-export type OrderCartItem = {
-  id: string;
-  name: string;
-  price: number;
-  category: CategoryId;
-  image: string;
-  quantity: number;
-};
 
 type OrderCartContextValue = {
   items: OrderCartItem[];
   itemCount: number;
   total: number;
   open: boolean;
-  addProduct: (product: Product) => void;
+  addProduct: (product: Product, colorId?: string) => void;
   increaseQuantity: (productId: string) => void;
   decreaseQuantity: (productId: string) => void;
   removeProduct: (productId: string) => void;
@@ -71,31 +60,12 @@ type OrderCartContextValue = {
 
 const OrderCartContext = createContext<OrderCartContextValue | null>(null);
 
-const isStoredItem = (value: unknown): value is OrderCartItem => {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Record<string, unknown>;
-
-  return (
-    typeof item["id"] === "string" &&
-    typeof item["name"] === "string" &&
-    typeof item["price"] === "number" &&
-    typeof item["category"] === "string" &&
-    ["perfumes", "sneakers", "watches"].includes(item["category"]) &&
-    typeof item["image"] === "string" &&
-    typeof item["quantity"] === "number" &&
-    Number.isFinite(item["price"]) &&
-    Number.isInteger(item["quantity"]) &&
-    item["quantity"] > 0
-  );
-};
-
 const readStoredCart = () => {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(isStoredItem);
+    return parseStoredCartItems(parsed);
   } catch {
     return [];
   }
@@ -122,33 +92,16 @@ export function OrderCartProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }, [hydrated, items]);
 
-  const addProduct = useCallback((product: Product) => {
-    setItems((current) => {
-      const existing = current.find((item) => item.id === product.id);
-      if (existing) {
-        return current.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item,
-        );
-      }
-
-      return [
-        ...current,
-        {
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          category: product.category,
-          image: product.image,
-          quantity: 1,
-        },
-      ];
-    });
+  const addProduct = useCallback((product: Product, colorId?: string) => {
+    setItems((current) => addProductToCart(current, product, colorId));
   }, []);
 
   const increaseQuantity = useCallback((productId: string) => {
     setItems((current) =>
       current.map((item) =>
-        item.id === productId ? { ...item, quantity: item.quantity + 1 } : item,
+        orderLineKey(item.id, item.colorId) === productId
+          ? { ...item, quantity: Math.min(999, item.quantity + 1) }
+          : item,
       ),
     );
   }, []);
@@ -156,7 +109,7 @@ export function OrderCartProvider({ children }: { children: ReactNode }) {
   const decreaseQuantity = useCallback((productId: string) => {
     setItems((current) =>
       current.flatMap((item) => {
-        if (item.id !== productId) return [item];
+        if (orderLineKey(item.id, item.colorId) !== productId) return [item];
         if (item.quantity <= 1) return [];
         return [{ ...item, quantity: item.quantity - 1 }];
       }),
@@ -164,7 +117,9 @@ export function OrderCartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeProduct = useCallback((productId: string) => {
-    setItems((current) => current.filter((item) => item.id !== productId));
+    setItems((current) =>
+      current.filter((item) => orderLineKey(item.id, item.colorId) !== productId),
+    );
   }, []);
 
   const clearCart = useCallback(() => {
@@ -187,15 +142,7 @@ export function OrderCartProvider({ children }: { children: ReactNode }) {
       clearCart,
       setOpen,
     };
-  }, [
-    addProduct,
-    clearCart,
-    decreaseQuantity,
-    increaseQuantity,
-    items,
-    open,
-    removeProduct,
-  ]);
+  }, [addProduct, clearCart, decreaseQuantity, increaseQuantity, items, open, removeProduct]);
 
   return (
     <OrderCartContext.Provider value={value}>
@@ -293,6 +240,7 @@ function OrderSummarySheet() {
     const orderCart = items.map((item) => ({
       productId: item.id,
       quantity: item.quantity,
+      ...(item.colorId ? { colorId: item.colorId } : {}),
     }));
     if (orderCart.length === 0) {
       setFormError("Your order is empty. Add a product before continuing.");
@@ -319,6 +267,7 @@ function OrderSummarySheet() {
           orderUrl,
           itemCount,
           total: order.overallTotal,
+          items: order.items,
         }),
         "_blank",
       );
@@ -331,8 +280,9 @@ function OrderSummarySheet() {
       clearCart();
       setCustomerDialogOpen(false);
       setOpen(false);
-    } catch {
-      const message = "We couldn't create your order. Please try again.";
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "We couldn't create your order. Please try again.";
       setFormError(message);
       toast.error(message);
     } finally {
@@ -342,10 +292,7 @@ function OrderSummarySheet() {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetContent
-        side="right"
-        className="flex h-full w-full max-w-full flex-col p-0 sm:max-w-md"
-      >
+      <SheetContent side="right" className="flex h-full w-full max-w-full flex-col p-0 sm:max-w-md">
         <SheetHeader className="border-b border-border px-5 py-5 text-left">
           <SheetTitle className="font-display text-2xl">Order Summary</SheetTitle>
           <SheetDescription>
@@ -368,7 +315,7 @@ function OrderSummarySheet() {
             <ul className="space-y-4">
               {items.map((item) => (
                 <li
-                  key={item.id}
+                  key={orderLineKey(item.id, item.colorId)}
                   className="grid grid-cols-[4.5rem_1fr] gap-3 border-b border-border pb-4 last:border-b-0"
                 >
                   <img
@@ -384,14 +331,15 @@ function OrderSummarySheet() {
                         <p className="truncate text-sm font-semibold text-foreground">
                           {item.name}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-1 break-words text-xs text-muted-foreground">
                           {categoryById(item.category).title}
+                          {item.colorName ? ` - ${item.colorName}` : ""}
                         </p>
                       </div>
                       <button
                         type="button"
-                        onClick={() => removeProduct(item.id)}
-                        aria-label={`Remove ${item.name}`}
+                        onClick={() => removeProduct(orderLineKey(item.id, item.colorId))}
+                        aria-label={`Remove ${item.name}${item.colorName ? ` (${item.colorName})` : ""}`}
                         className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       >
                         <Trash2 className="size-4" aria-hidden />
@@ -399,12 +347,14 @@ function OrderSummarySheet() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-primary">{formatCedis(item.price)}</p>
+                      <p className="text-sm font-semibold text-primary">
+                        {formatCedis(item.price)}
+                      </p>
                       <div className="flex items-center rounded-full border border-border bg-background">
                         <button
                           type="button"
-                          onClick={() => decreaseQuantity(item.id)}
-                          aria-label={`Decrease quantity for ${item.name}`}
+                          onClick={() => decreaseQuantity(orderLineKey(item.id, item.colorId))}
+                          aria-label={`Decrease quantity for ${item.name} ${item.colorName ?? ""}`}
                           className="inline-flex size-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent"
                         >
                           <Minus className="size-3.5" aria-hidden />
@@ -414,8 +364,9 @@ function OrderSummarySheet() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => increaseQuantity(item.id)}
-                          aria-label={`Increase quantity for ${item.name}`}
+                          onClick={() => increaseQuantity(orderLineKey(item.id, item.colorId))}
+                          aria-label={`Increase quantity for ${item.name} ${item.colorName ?? ""}`}
+                          disabled={item.quantity >= 999}
                           className="inline-flex size-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent"
                         >
                           <Plus className="size-3.5" aria-hidden />

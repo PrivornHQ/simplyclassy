@@ -8,6 +8,8 @@ export type OrderSnapshotItem = {
   unitPrice: number;
   quantity: number;
   lineSubtotal: number;
+  colorId?: string;
+  colorName?: string;
 };
 
 export const ORDER_STATUSES = [
@@ -51,6 +53,7 @@ export const MAX_ORDER_STATUS_NOTE_CHARS = 240;
 export type CreateOrderCartItem = {
   productId: string;
   quantity: number;
+  colorId?: string;
 };
 
 export type CreateOrderInput = {

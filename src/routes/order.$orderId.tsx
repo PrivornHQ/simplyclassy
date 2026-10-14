@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, PackageX, ShoppingBag } from "lucide-react";
 import logoAsset from "@/assets/logo.png";
 import { OrderStatusTimeline } from "@/components/site/OrderStatusTimeline";
-import { categoryById, formatCedis } from "@/data/products";
+import { categoryById, formatCedis, orderLineKey } from "@/data/products";
 import { getPublicOrder } from "@/lib/order.functions";
 
 export const Route = createFileRoute("/order/$orderId")({
@@ -153,7 +153,7 @@ function OrderPage() {
             <ul className="divide-y divide-border">
               {order.items.map((item) => (
                 <li
-                  key={item.productId}
+                  key={orderLineKey(item.productId, item.colorId)}
                   className="grid gap-4 py-5 sm:grid-cols-[7rem_1fr] sm:gap-5"
                 >
                   <img
@@ -167,8 +167,9 @@ function OrderPage() {
                         <p className="text-base font-semibold text-foreground">
                           {item.productName}
                         </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="mt-1 break-words text-sm text-muted-foreground">
                           {categoryById(item.category).title}
+                          {item.colorName ? ` - ${item.colorName}` : ""}
                         </p>
                       </div>
                       <p className="shrink-0 text-base font-semibold text-foreground">

@@ -34,7 +34,10 @@ async function loadStore(kv, cwd, products = []) {
   return loadModule(
     "src/server/order-store.server.ts",
     {
-      "@/data/products": { isCategoryId: (id) => ["sneakers", "watches", "perfumes"].includes(id) },
+      "@/data/products": {
+        isCategoryId: (id) => ["sneakers", "watches", "perfumes"].includes(id),
+        orderLineKey: (productId, colorId) => JSON.stringify([productId, colorId ?? null]),
+      },
       "@/data/orders": orderData,
       "@/server/catalog-store.server": { listStoredProducts: async () => products },
       "@tanstack/start-server-core": {

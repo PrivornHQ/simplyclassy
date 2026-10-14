@@ -1,4 +1,4 @@
-import { isCategoryId, type Product } from "@/data/products";
+import { isCategoryId, orderLineKey, type Product, type ProductColor } from "@/data/products";
 import {
   MAX_ORDER_CUSTOMER_NAME_CHARS,
   MAX_ORDER_ADMIN_NOTES_CHARS,
@@ -251,6 +251,10 @@ function parseOrderItem(value: unknown): OrderSnapshotItem | null {
   if (typeof lineSubtotal !== "number" || !Number.isFinite(lineSubtotal) || lineSubtotal < 0) {
     return null;
   }
+  const colorId = value["colorId"];
+  const colorName = value["colorName"];
+  if ((colorId !== undefined || colorName !== undefined) &&
+    (typeof colorId !== "string" || typeof colorName !== "string" || !colorName.trim())) return null;
 
   return {
     productId,
@@ -260,6 +264,7 @@ function parseOrderItem(value: unknown): OrderSnapshotItem | null {
     unitPrice,
     quantity,
     lineSubtotal,
+    ...(typeof colorId === "string" && typeof colorName === "string" ? { colorId, colorName } : {}),
   };
 }
 
@@ -332,29 +337,35 @@ function parseStatusHistoryEntry(value: unknown): OrderStatusHistoryEntry | null
 }
 
 function aggregateCartItems(items: CreateOrderCartItem[]) {
-  const quantities = new Map<string, number>();
+  const quantities = new Map<string, CreateOrderCartItem>();
 
   for (const item of items) {
     const productId = item.productId.trim();
-    const current = quantities.get(productId) ?? 0;
-    quantities.set(productId, current + item.quantity);
+    const colorId = item.colorId;
+    const key = orderLineKey(productId, colorId);
+    const quantity = (quantities.get(key)?.quantity ?? 0) + item.quantity;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
+      throw new Error("One or more product quantities could not be read.");
+    }
+    quantities.set(key, { productId, quantity, ...(colorId ? { colorId } : {}) });
   }
 
-  return [...quantities.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+  return [...quantities.values()];
 }
 
-function snapshotProduct(product: Product, quantity: number): OrderSnapshotItem {
+function snapshotProduct(product: Product, quantity: number, color?: ProductColor): OrderSnapshotItem {
   const unitPrice = product.price;
   const lineSubtotal = unitPrice * quantity;
 
   return {
     productId: product.id,
     productName: product.name,
-    productImage: product.image,
+    productImage: color?.images[0] ?? product.image,
     category: product.category,
     unitPrice,
     quantity,
     lineSubtotal,
+    ...(color ? { colorId: color.id, colorName: color.name } : {}),
   };
 }
 
@@ -494,12 +505,16 @@ export async function createStoredOrder(data: CreateOrderInput): Promise<OrderSn
 
   const products = await listStoredProducts();
   const productById = new Map(products.map((product) => [product.id, product]));
-  const orderItems = cartItems.map(({ productId, quantity }) => {
+  const orderItems = cartItems.map(({ productId, quantity, colorId }) => {
     const product = productById.get(productId);
     if (!product || !product.available) {
       throw new Error("One or more selected products are no longer available.");
     }
-    return snapshotProduct(product, quantity);
+    const color = colorId ? product.colors?.find((variant) => variant.id === colorId) : undefined;
+    if ((colorId && !color) || (product.colors?.length && !color)) {
+      throw new Error("One or more selected colors are no longer available. Please update your cart.");
+    }
+    return snapshotProduct(product, quantity, color);
   });
 
   const overallTotal = orderItems.reduce((sum, item) => sum + item.lineSubtotal, 0);
@@ -595,7 +610,7 @@ export async function listStoredOrders({
         order.name,
         order.location,
         order.id,
-        ...order.items.map((item) => item.productName),
+        ...order.items.flatMap((item) => [item.productName, item.colorName ?? ""]),
       ]
         .join(" ")
         .toLocaleLowerCase();

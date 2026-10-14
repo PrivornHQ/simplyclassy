@@ -47,14 +47,17 @@ function validateCreateOrderInput(value: unknown): CreateOrderInput {
     location,
     cart: cart.map((item) => {
       if (!isRecord(item)) throw new Error("One or more products could not be read.");
-      const { productId, quantity } = item;
+      const { productId, quantity, colorId } = item;
       if (typeof productId !== "string" || !productId.trim() || productId.length > 120) {
         throw new Error("One or more products could not be read.");
       }
       if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 999) {
         throw new Error("One or more product quantities could not be read.");
       }
-      return { productId, quantity };
+      if (colorId !== undefined && (typeof colorId !== "string" || !/^[a-zA-Z0-9_-]{1,80}$/.test(colorId))) {
+        throw new Error("One or more selected colors could not be read.");
+      }
+      return { productId, quantity, ...(typeof colorId === "string" ? { colorId } : {}) };
     }),
   };
 }
