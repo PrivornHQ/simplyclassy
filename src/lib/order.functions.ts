@@ -11,6 +11,8 @@ import {
 import { requireAdminSession } from "@/server/admin-auth.server";
 import {
   createStoredOrder,
+  deleteStoredOrder,
+  deleteStoredOrders,
   listStoredOrders,
   readOrderForCustomerTracking,
   readStoredOrder,
@@ -133,9 +135,9 @@ export const listAdminOrders = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     await requireAdminSession();
     return listStoredOrders({
-      query: data.query,
+      ...(data.query !== undefined ? { query: data.query } : {}),
       status: data.status && isOrderStatus(data.status) ? data.status : "all",
-      limit: data.limit,
+      ...(data.limit !== undefined ? { limit: data.limit } : {}),
     });
   });
 
@@ -154,10 +156,34 @@ export const saveAdminOrder = createServerFn({ method: "POST" })
       return await updateStoredOrder({
         orderId: data.orderId,
         status: data.status,
-        adminNotes: data.adminNotes,
-        statusNote: data.statusNote,
+        ...(data.adminNotes !== undefined ? { adminNotes: data.adminNotes } : {}),
+        ...(data.statusNote !== undefined ? { statusNote: data.statusNote } : {}),
       });
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "Couldn't update the order.");
+    }
+  });
+
+const deletionOrderId = z.string().trim().regex(/^[a-zA-Z0-9_-]{6,80}$/, "Choose a valid order.");
+
+export const deleteAdminOrder = createServerFn({ method: "POST" })
+  .validator(z.object({ orderId: deletionOrderId }))
+  .handler(async ({ data }) => {
+    await requireAdminSession();
+    try {
+      return { deletedId: await deleteStoredOrder(data.orderId) };
+    } catch {
+      throw new Error("Couldn't finish deleting this order. Please retry the deletion.");
+    }
+  });
+
+export const clearAdminOrders = createServerFn({ method: "POST" })
+  .validator(z.object({ orderIds: z.array(deletionOrderId).min(1).max(250) }))
+  .handler(async ({ data }) => {
+    await requireAdminSession();
+    try {
+      return await deleteStoredOrders(data.orderIds);
+    } catch {
+      throw new Error("Couldn't clear these orders. Please try again.");
     }
   });

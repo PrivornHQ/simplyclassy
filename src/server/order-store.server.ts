@@ -23,6 +23,7 @@ const ORDER_KEY_PREFIX = "orders/";
 const ORDER_NUMBER_COUNTER_KEY = "orders/order-number-counter.json";
 const ORDER_NUMBER_INDEX_PREFIX = "order-numbers/";
 const ORDER_INDEX_KEY = "orders/index.json";
+const DELETED_ORDER_PREFIX = "deleted-orders/";
 const FIRST_ORDER_SEQUENCE = 437001;
 const ORDER_NUMBER_PREFIX = "SC-";
 export const ORDER_RETENTION_SECONDS = 60 * 60 * 24 * 30;
@@ -37,6 +38,7 @@ type OrderPersistence = {
 
 let persistencePromise: Promise<OrderPersistence> | undefined;
 let orderNumberLock: Promise<unknown> = Promise.resolve();
+let orderMutationLock: Promise<unknown> = Promise.resolve();
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -102,7 +104,7 @@ function createCloudflareKVPersistence(kv: OrderKVNamespace): OrderPersistence {
       const keys: string[] = [];
       let cursor: string | undefined;
       do {
-        const result = await kv.list({ prefix, cursor, limit: 1000 });
+        const result = await kv.list({ prefix, ...(cursor ? { cursor } : {}), limit: 1000 });
         keys.push(...result.keys.map((item) => item.name));
         cursor = result.list_complete ? undefined : result.cursor;
       } while (cursor);
@@ -122,24 +124,31 @@ async function createFilePersistence(): Promise<OrderPersistence> {
 
   return {
     async getText(key) {
+      let raw: string;
       try {
-        const raw = await readFile(fileFor(key), "utf8");
-        const parsed: unknown = JSON.parse(raw);
-        if (
-          isRecord(parsed) &&
-          typeof parsed["value"] === "string" &&
-          typeof parsed["expiresAt"] === "string"
-        ) {
-          if (Date.parse(parsed["expiresAt"]) <= Date.now()) {
-            await unlink(fileFor(key)).catch(() => undefined);
-            return null;
-          }
-          return parsed["value"];
-        }
-        return raw;
-      } catch {
-        return null;
+        raw = await readFile(fileFor(key), "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
       }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return raw;
+      }
+      if (
+        isRecord(parsed) &&
+        typeof parsed["value"] === "string" &&
+        typeof parsed["expiresAt"] === "string"
+      ) {
+        if (Date.parse(parsed["expiresAt"]) <= Date.now()) {
+          await unlink(fileFor(key)).catch(() => undefined);
+          return null;
+        }
+        return parsed["value"];
+      }
+      return raw;
     },
     async setText(key, value, expirationTtlSeconds) {
       const expiresAt = new Date(Date.now() + expirationTtlSeconds * 1000).toISOString();
@@ -149,7 +158,9 @@ async function createFilePersistence(): Promise<OrderPersistence> {
       await writeFile(fileFor(key), value, "utf8");
     },
     async deleteKey(key) {
-      await unlink(fileFor(key)).catch(() => undefined);
+      await unlink(fileFor(key)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      });
     },
     async listKeys(prefix) {
       try {
@@ -178,6 +189,13 @@ const LOCATION_ADDRESS_PATTERN = /[\d#]/;
 
 const orderKey = (orderId: string) => `${ORDER_KEY_PREFIX}${orderId}.json`;
 const orderNumberKey = (orderNumber: string) => `${ORDER_NUMBER_INDEX_PREFIX}${orderNumber}.json`;
+const deletedOrderKey = (orderId: string) => `${DELETED_ORDER_PREFIX}${orderId}.json`;
+
+async function runOrderMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const run = orderMutationLock.then(mutation);
+  orderMutationLock = run.catch(() => undefined);
+  return run;
+}
 
 const formatOrderNumber = (sequence: number) => `${ORDER_NUMBER_PREFIX}${sequence}`;
 
@@ -410,6 +428,9 @@ async function discoverOrderIds(store: OrderPersistence) {
 }
 
 async function writeOrderSnapshot(store: OrderPersistence, order: OrderSnapshot) {
+  if (await store.getText(deletedOrderKey(order.id))) {
+    throw new Error("This order has been deleted and cannot be updated.");
+  }
   await store.setTextPermanent(orderKey(order.id), JSON.stringify(order));
   await store.setTextPermanent(orderNumberKey(order.orderNumber), order.id);
   await rememberOrderId(store, order.id);
@@ -507,6 +528,7 @@ export async function readStoredOrder(orderId: string): Promise<OrderSnapshot | 
   if (!isSafeOrderId(normalized)) return null;
 
   const store = await getPersistence();
+  if (await store.getText(deletedOrderKey(normalized))) return null;
   const raw = await store.getText(orderKey(normalized));
   if (!raw) return null;
 
@@ -584,6 +606,10 @@ export async function listStoredOrders({
 }
 
 export async function updateStoredOrder(input: UpdateOrderInput): Promise<OrderSnapshot> {
+  return runOrderMutation(() => updateOrderSnapshot(input));
+}
+
+async function updateOrderSnapshot(input: UpdateOrderInput): Promise<OrderSnapshot> {
   const store = await getPersistence();
   const order = await readStoredOrder(input.orderId);
   if (!order) throw new Error("That order could not be found.");
@@ -619,4 +645,63 @@ export async function updateStoredOrder(input: UpdateOrderInput): Promise<OrderS
 
   await writeOrderSnapshot(store, updated);
   return updated;
+}
+
+async function deleteOrderSnapshot(store: OrderPersistence, orderId: string): Promise<void> {
+  const marker = await store.getText(deletedOrderKey(orderId));
+  const order = marker ? null : await readStoredOrder(orderId);
+  // Keep only the number so a failed cleanup can be retried after the snapshot is gone.
+  const parsedMarker: unknown = marker ? JSON.parse(marker) : null;
+  const orderNumber =
+    isRecord(parsedMarker) && typeof parsedMarker["orderNumber"] === "string"
+      ? parsedMarker["orderNumber"]
+      : order?.orderNumber;
+
+  if (!marker) {
+    await store.setTextPermanent(
+      deletedOrderKey(orderId),
+      JSON.stringify({ orderNumber, deletedAt: new Date().toISOString() }),
+    );
+  }
+  await store.deleteKey(orderKey(orderId));
+  if (orderNumber) await store.deleteKey(orderNumberKey(orderNumber));
+  const indexed = await readOrderIdIndex(store);
+  await writeOrderIdIndex(
+    store,
+    indexed.filter((id) => id !== orderId),
+  );
+}
+
+function normalizeDeletionIds(orderIds: string[]) {
+  const ids = [...new Set(orderIds.map((id) => id.trim()))];
+  if (ids.some((id) => !isSafeOrderId(id))) throw new Error("Choose valid orders to delete.");
+  return ids;
+}
+
+export async function deleteStoredOrder(orderId: string): Promise<string> {
+  const id = orderId.trim();
+  normalizeDeletionIds([id]);
+  return runOrderMutation(async () => {
+    const store = await getPersistence();
+    await deleteOrderSnapshot(store, id);
+    return id;
+  });
+}
+
+export async function deleteStoredOrders(orderIds: string[]) {
+  const ids = normalizeDeletionIds(orderIds);
+  return runOrderMutation(async () => {
+    const store = await getPersistence();
+    const deletedIds: string[] = [];
+    const failedIds: string[] = [];
+    for (const id of ids) {
+      try {
+        await deleteOrderSnapshot(store, id);
+        deletedIds.push(id);
+      } catch {
+        failedIds.push(id);
+      }
+    }
+    return { deletedIds, failedIds };
+  });
 }

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { Search, Star } from "lucide-react";
+import { Search, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +33,12 @@ import {
   type OrderStatus,
 } from "@/data/orders";
 import { deleteAdminProduct, saveAdminProduct } from "@/lib/catalog.functions";
-import { listAdminOrders, saveAdminOrder } from "@/lib/order.functions";
+import {
+  clearAdminOrders,
+  deleteAdminOrder,
+  listAdminOrders,
+  saveAdminOrder,
+} from "@/lib/order.functions";
 import { deleteAdminReview } from "@/lib/review.functions";
 import { cn } from "@/lib/utils";
 import { ProductForm, type ProductFormValues } from "./ProductForm";
@@ -87,6 +92,12 @@ export function AdminDashboard({
   const [orderStatus, setOrderStatus] = useState<OrderStatus | "all">("all");
   const [searchingOrders, setSearchingOrders] = useState(false);
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  const [pendingOrderDelete, setPendingOrderDelete] = useState<OrderSnapshot | null>(null);
+  const [pendingClearOrders, setPendingClearOrders] = useState<OrderSnapshot[]>([]);
+  const [clearingOrders, setClearingOrders] = useState(false);
+  const deletedOrderIds = useRef(new Set<string>());
+  const orderMutationBusy = savingOrderId !== null || deletingOrderId !== null || clearingOrders;
 
   const visible = useMemo(
     () =>
@@ -99,7 +110,7 @@ export function AdminDashboard({
   const showingOrders = filter === "orders";
 
   useEffect(() => {
-    setOrderResults(orders);
+    setOrderResults(orders.filter((order) => !deletedOrderIds.current.has(order.id)));
   }, [orders]);
 
   const save = async (values: ProductFormValues) => {
@@ -169,7 +180,7 @@ export function AdminDashboard({
           limit: 100,
         },
       });
-      setOrderResults(nextOrders);
+      setOrderResults(nextOrders.filter((order) => !deletedOrderIds.current.has(order.id)));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Couldn't search orders.");
     } finally {
@@ -206,6 +217,51 @@ export function AdminDashboard({
       toast.error(err instanceof Error ? err.message : "Couldn't update the order.");
     } finally {
       setSavingOrderId(null);
+    }
+  };
+
+  const removeDeletedOrders = (ids: string[]) => {
+    for (const id of ids) deletedOrderIds.current.add(id);
+    setOrderResults((current) => current.filter((order) => !deletedOrderIds.current.has(order.id)));
+  };
+
+  const confirmOrderDelete = async () => {
+    if (!pendingOrderDelete || orderMutationBusy) return;
+    setDeletingOrderId(pendingOrderDelete.id);
+    try {
+      const result = await deleteAdminOrder({ data: { orderId: pendingOrderDelete.id } });
+      removeDeletedOrders([result.deletedId]);
+      setPendingOrderDelete(null);
+      toast.success("Order permanently deleted.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't delete the order. Please try again.");
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
+  const confirmClearOrders = async () => {
+    if (pendingClearOrders.length === 0 || orderMutationBusy) return;
+    setClearingOrders(true);
+    try {
+      const result = await clearAdminOrders({
+        data: { orderIds: pendingClearOrders.map((order) => order.id) },
+      });
+      removeDeletedOrders(result.deletedIds);
+      setPendingClearOrders((current) =>
+        current.filter((order) => result.failedIds.includes(order.id)),
+      );
+      if (result.failedIds.length > 0) {
+        toast.error(
+          `${result.deletedIds.length} deleted; ${result.failedIds.length} could not be fully deleted. Please retry.`,
+        );
+      } else {
+        toast.success(`${result.deletedIds.length} order(s) permanently deleted.`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Couldn't clear orders. Please try again.");
+    } finally {
+      setClearingOrders(false);
     }
   };
 
@@ -329,11 +385,29 @@ export function AdminDashboard({
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button type="submit" className="self-end rounded-full" disabled={searchingOrders}>
+                  <Button
+                    type="submit"
+                    className="self-end rounded-full"
+                    disabled={searchingOrders || orderMutationBusy}
+                  >
                     <Search className="size-4" aria-hidden />
                     {searchingOrders ? "Searching..." : "Search"}
                   </Button>
                 </form>
+
+                <div className="mt-4 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={
+                      orderResults.length === 0 || searchingOrders || orderMutationBusy || loading
+                    }
+                    onClick={() => setPendingClearOrders([...orderResults])}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                    Clear shown orders
+                  </Button>
+                </div>
 
                 {orderResults.length === 0 ? (
                   <p className="mt-4 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -346,7 +420,10 @@ export function AdminDashboard({
                         key={order.id}
                         order={order}
                         saving={savingOrderId === order.id}
+                        deleting={deletingOrderId === order.id || clearingOrders}
+                        busy={orderMutationBusy || searchingOrders || loading}
                         onSave={saveOrder}
+                        onDelete={setPendingOrderDelete}
                       />
                     ))}
                   </ul>
@@ -491,6 +568,64 @@ export function AdminDashboard({
       </main>
 
       <AlertDialog
+        open={pendingOrderDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingOrderId) setPendingOrderDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingOrderDelete?.orderNumber} will be permanently removed, including its notes and
+              history. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingOrderId !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmOrderDelete();
+              }}
+              disabled={orderMutationBusy}
+            >
+              {deletingOrderId ? "Deleting..." : "Delete order"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingClearOrders.length > 0}
+        onOpenChange={(open) => {
+          if (!open && !clearingOrders) setPendingClearOrders([]);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear these {pendingClearOrders.length} orders?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Only the orders shown when you selected Clear will be permanently deleted. Other orders
+              will be kept. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearingOrders}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void confirmClearOrders();
+              }}
+              disabled={orderMutationBusy}
+            >
+              {clearingOrders ? "Clearing..." : "Permanently clear orders"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
       >
@@ -547,10 +682,16 @@ const formatOrderDate = (createdAt: string) =>
 function AdminOrderCard({
   order,
   saving,
+  deleting,
+  busy,
   onSave,
+  onDelete,
 }: {
   order: OrderSnapshot;
   saving: boolean;
+  deleting: boolean;
+  busy: boolean;
+  onDelete: (order: OrderSnapshot) => void;
   onSave: (values: {
     order: OrderSnapshot;
     status: OrderStatus;
@@ -667,8 +808,17 @@ function AdminOrderCard({
               className="min-h-24 resize-none"
             />
           </div>
-          <Button type="submit" className="rounded-full" disabled={!dirty || saving}>
+          <Button type="submit" className="rounded-full" disabled={!dirty || busy}>
             {saving ? "Saving..." : "Save order"}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy}
+            onClick={() => onDelete(order)}
+          >
+            <Trash2 className="size-4" aria-hidden />
+            {deleting ? "Deleting..." : "Delete order"}
           </Button>
         </form>
       </div>
