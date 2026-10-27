@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, type ErrorComponentProps } from "@tanstack/react-router";
 import { Navbar } from "@/components/site/Navbar";
 import { Hero } from "@/components/site/Hero";
 import { TrustBadges } from "@/components/site/TrustBadges";
@@ -139,14 +139,14 @@ function CatalogPending() {
   );
 }
 
-function CatalogError({ error, reset }: { error: Error; reset: () => void }) {
+function CatalogError({ error, reset }: ErrorComponentProps) {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <main className="section-shell py-28">
         <h1 className="font-display text-2xl font-semibold">The catalogue didn't load</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {error.message || "Please try again in a moment."}
+          {(error instanceof Error && error.message) || "Please try again in a moment."}
         </p>
         <button
           type="button"
