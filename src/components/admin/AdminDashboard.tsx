@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useRouter } from "@tanstack/react-router";
 import { Check, LoaderCircle, RotateCw, Search, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { VisitorAnalyticsPanel } from "@/components/admin/VisitorAnalyticsPanel";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -25,7 +26,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { categories, formatCedis, orderLineKey, type CategoryId, type Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
-import type { VisitorAnalyticsEntry } from "@/lib/visitor-analytics.functions";
+import type { VisitorAnalyticsRange, VisitorAnalyticsSummary } from "@/lib/visitor-analytics";
 import {
   MAX_ORDER_ADMIN_NOTES_CHARS,
   MAX_ORDER_STATUS_NOTE_CHARS,
@@ -47,7 +48,7 @@ import { cn } from "@/lib/utils";
 import { ProductForm, type ProductFormValues } from "./ProductForm";
 
 type Mode = { type: "list" } | { type: "form"; product: Product | null };
-type AdminFilter = "all" | CategoryId | "orders" | "reviews";
+type AdminFilter = "all" | CategoryId | "orders" | "reviews" | "analytics";
 
 const adminFilters: { id: AdminFilter; label: string }[] = [
   { id: "all", label: "All" },
@@ -56,6 +57,7 @@ const adminFilters: { id: AdminFilter; label: string }[] = [
   { id: "watches", label: "Watches" },
   { id: "perfumes", label: "Perfumes" },
   { id: "reviews", label: "Reviews" },
+  { id: "analytics", label: "Analytics" },
 ];
 
 const orderStatusOptions = [
@@ -70,8 +72,7 @@ export function AdminDashboard({
   products,
   reviews,
   orders,
-  visitorAnalytics,
-  visitorAnalyticsError,
+  onLoadVisitorAnalytics,
   loading,
   error,
   onRefresh,
@@ -80,8 +81,7 @@ export function AdminDashboard({
   products: Product[];
   reviews: CustomerReview[];
   orders: OrderSnapshot[];
-  visitorAnalytics: VisitorAnalyticsEntry[];
-  visitorAnalyticsError: string | null;
+  onLoadVisitorAnalytics: (range: VisitorAnalyticsRange) => Promise<VisitorAnalyticsSummary>;
   loading: boolean;
   error: string | null;
   onRefresh: () => Promise<void>;
@@ -152,13 +152,14 @@ export function AdminDashboard({
 
   const visible = useMemo(
     () =>
-      filter === "all" || filter === "reviews"
+      filter === "all" || filter === "reviews" || filter === "analytics"
         ? products
         : products.filter((p) => p.category === filter),
     [filter, products],
   );
   const showingReviews = filter === "reviews";
   const showingOrders = filter === "orders";
+  const showingAnalytics = filter === "analytics";
 
   useEffect(() => {
     setOrderResults(reconcileOrders(orders));
@@ -343,68 +344,6 @@ export function AdminDashboard({
       </header>
 
       <main className="section-shell py-8">
-        <section
-          aria-labelledby="visitor-analytics-title"
-          className="mb-8 rounded-xl border border-border bg-card p-5 shadow-soft"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="eyebrow">Last 30 days</p>
-              <h2
-                id="visitor-analytics-title"
-                className="mt-1 font-display text-2xl font-semibold text-foreground"
-              >
-                Visitor activity
-              </h2>
-            </div>
-            <p className="max-w-lg text-xs leading-5 text-muted-foreground">
-              Anonymous page views and unique browser tabs per day. No names, IP addresses,
-              referrers, or page URLs are stored.
-            </p>
-          </div>
-          {visitorAnalyticsError ? (
-            <p role="alert" className="mt-4 text-sm text-destructive">
-              {visitorAnalyticsError}
-            </p>
-          ) : visitorAnalytics.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">
-              Visitor analytics are loading. New counts will appear as people browse the site.
-            </p>
-          ) : (
-            <>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <AnalyticsMetric
-                  label="Page views"
-                  value={visitorAnalytics.reduce((total, day) => total + day.pageViews, 0)}
-                />
-                <AnalyticsMetric
-                  label="Browser sessions"
-                  value={visitorAnalytics.reduce((total, day) => total + day.sessions, 0)}
-                />
-              </div>
-              <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
-                {visitorAnalytics.slice(-7).map((day) => (
-                  <li
-                    key={day.date}
-                    className="rounded-md border border-border px-3 py-2 text-sm"
-                  >
-                    <p className="text-xs text-muted-foreground">
-                      {new Intl.DateTimeFormat("en", {
-                        month: "short",
-                        day: "numeric",
-                        timeZone: "UTC",
-                      }).format(new Date(`${day.date}T00:00:00Z`))}
-                    </p>
-                    <p className="mt-1 font-medium text-foreground">
-                      {day.sessions} sessions · {day.pageViews} views
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-
         {mode.type === "form" ? (
           <div className="mx-auto max-w-2xl rounded-xl border border-border bg-card p-5 shadow-soft sm:p-8">
             <ProductForm
@@ -416,29 +355,31 @@ export function AdminDashboard({
           </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
-                {showingOrders
-                  ? orderResults.length === 0
-                    ? "No orders found."
-                    : `${orderResults.length} order${orderResults.length === 1 ? "" : "s"} found.`
-                  : showingReviews
-                    ? reviews.length === 0
-                      ? "No reviews yet."
-                      : `${reviews.length} review${reviews.length === 1 ? "" : "s"}.`
-                    : products.length === 0
-                      ? "No products yet."
-                      : `${products.length} product${products.length === 1 ? "" : "s"} in the catalogue.`}
-              </p>
-              {!showingReviews && !showingOrders && (
-                <Button
-                  className="rounded-full"
-                  onClick={() => setMode({ type: "form", product: null })}
-                >
-                  Add product
-                </Button>
-              )}
-            </div>
+            {!showingAnalytics && (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  {showingOrders
+                    ? orderResults.length === 0
+                      ? "No orders found."
+                      : `${orderResults.length} order${orderResults.length === 1 ? "" : "s"} found.`
+                    : showingReviews
+                      ? reviews.length === 0
+                        ? "No reviews yet."
+                        : `${reviews.length} review${reviews.length === 1 ? "" : "s"}.`
+                      : products.length === 0
+                        ? "No products yet."
+                        : `${products.length} product${products.length === 1 ? "" : "s"} in the catalogue.`}
+                </p>
+                {!showingReviews && !showingOrders && (
+                  <Button
+                    className="rounded-full"
+                    onClick={() => setMode({ type: "form", product: null })}
+                  >
+                    Add product
+                  </Button>
+                )}
+              </div>
+            )}
 
             <div className="mt-4 flex flex-wrap gap-2">
               {adminFilters.map((item) => (
@@ -451,8 +392,16 @@ export function AdminDashboard({
               ))}
             </div>
 
-            {loading && <p className="mt-8 text-sm text-muted-foreground">Loading products…</p>}
-            {error && (
+            {showingAnalytics && (
+              <div className="mt-6">
+                <VisitorAnalyticsPanel onLoadRange={onLoadVisitorAnalytics} />
+              </div>
+            )}
+
+            {!showingAnalytics && loading && (
+              <p className="mt-8 text-sm text-muted-foreground">Loading products…</p>
+            )}
+            {!showingAnalytics && error && (
               <div className="mt-8 rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
                 <p className="text-destructive">{error}</p>
                 <Button className="mt-3" size="sm" onClick={() => void onRefresh()}>
@@ -461,15 +410,20 @@ export function AdminDashboard({
               </div>
             )}
 
-            {!showingOrders && !showingReviews && !loading && !error && visible.length === 0 && (
-              <p className="mt-8 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-                {products.length === 0
-                  ? "The catalogue is empty. Add your first product to get started."
-                  : "No products in this category yet."}
-              </p>
-            )}
+            {!showingAnalytics &&
+              !showingOrders &&
+              !showingReviews &&
+              !loading &&
+              !error &&
+              visible.length === 0 && (
+                <p className="mt-8 rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+                  {products.length === 0
+                    ? "The catalogue is empty. Add your first product to get started."
+                    : "No products in this category yet."}
+                </p>
+              )}
 
-            {showingOrders && (
+            {!showingAnalytics && showingOrders && (
               <section className="mt-6">
                 <form
                   className="grid gap-3 rounded-md border border-border bg-card p-4 shadow-soft lg:grid-cols-[1fr_14rem_auto]"
@@ -555,46 +509,46 @@ export function AdminDashboard({
               </section>
             )}
 
-            {!showingOrders && !showingReviews && (
-            <ul className="mt-6 grid gap-4">
-              {visible.map((product) => (
-                <li
-                  key={product.id}
-                  className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-soft sm:flex-row sm:items-center"
-                >
-                  <img
-                    src={product.image}
-                    alt={product.alt}
-                    className="size-24 rounded-lg object-cover sm:size-20"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-foreground">{product.name}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {categories.find((c) => c.id === product.category)?.title} ·{" "}
-                      {formatCedis(product.price)}
-                      {product.available ? "" : " · Unavailable"}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setMode({ type: "form", product })}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={deletingId === product.id}
-                      onClick={() => setPendingDelete(product)}
-                    >
-                      {deletingId === product.id ? "Deleting…" : "Delete"}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            {!showingAnalytics && !showingOrders && !showingReviews && (
+              <ul className="mt-6 grid gap-4">
+                {visible.map((product) => (
+                  <li
+                    key={product.id}
+                    className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 shadow-soft sm:flex-row sm:items-center"
+                  >
+                    <img
+                      src={product.image}
+                      alt={product.alt}
+                      className="size-24 rounded-lg object-cover sm:size-20"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-foreground">{product.name}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {categories.find((c) => c.id === product.category)?.title} ·{" "}
+                        {formatCedis(product.price)}
+                        {product.available ? "" : " · Unavailable"}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMode({ type: "form", product })}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={deletingId === product.id}
+                        onClick={() => setPendingDelete(product)}
+                      >
+                        {deletingId === product.id ? "Deleting…" : "Delete"}
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             )}
 
             {showingReviews && (
@@ -794,17 +748,6 @@ export function AdminDashboard({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  );
-}
-
-function AnalyticsMetric({ label, value }: { label: string; value: number }) {
-  return (
-    <dl className="rounded-md border border-border p-4">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-display text-3xl font-semibold text-foreground">
-        {value.toLocaleString("en")}
-      </dd>
-    </dl>
   );
 }
 

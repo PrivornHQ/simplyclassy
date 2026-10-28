@@ -14,6 +14,7 @@ import appCss from "../styles.css?url";
 import logoAsset from "../assets/logo.png";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { trackVisitorPageview } from "@/lib/visitor-analytics.functions";
+import { getOrCreateVisitorSessionId, getVisitorPageId } from "@/lib/visitor-analytics";
 import { OrderCartProvider } from "@/components/site/OrderCart";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -149,13 +150,23 @@ function VisitorTracker() {
   const lastPathname = useRef<string | null>(null);
 
   useEffect(() => {
-    if (pathname === "/admin" || pathname.startsWith("/api/")) return;
+    const pageId = getVisitorPageId(pathname);
+    if (!pageId) {
+      lastPathname.current = null;
+      return;
+    }
     if (lastPathname.current === pathname) return;
     lastPathname.current = pathname;
-    sessionId.current ??= crypto.randomUUID();
-    void trackVisitorPageview({ data: { sessionId: sessionId.current } }).catch((error: unknown) => {
-      console.error("Visitor analytics could not be recorded.", error);
-    });
+    if (!sessionId.current) {
+      try {
+        sessionId.current = getOrCreateVisitorSessionId(window.sessionStorage);
+      } catch {
+        sessionId.current = crypto.randomUUID();
+      }
+    }
+    void trackVisitorPageview({ data: { sessionId: sessionId.current, pageId } }).catch(
+      (error: unknown) => console.error("Visitor analytics could not be recorded.", error),
+    );
   }, [pathname]);
 
   return null;

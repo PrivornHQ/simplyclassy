@@ -6,10 +6,8 @@ import { getAdminAuthState, loginAdmin, logoutAdmin } from "@/lib/admin-auth.fun
 import { listAdminProducts } from "@/lib/catalog.functions";
 import { listAdminOrders } from "@/lib/order.functions";
 import { listAdminReviews } from "@/lib/review.functions";
-import {
-  getAdminVisitorAnalytics,
-  type VisitorAnalyticsEntry,
-} from "@/lib/visitor-analytics.functions";
+import { getAdminVisitorAnalytics } from "@/lib/visitor-analytics.functions";
+import type { VisitorAnalyticsRange, VisitorAnalyticsSummary } from "@/lib/visitor-analytics";
 import type { Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
 import type { OrderSnapshot } from "@/data/orders";
@@ -38,10 +36,14 @@ function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [reviews, setReviews] = useState<CustomerReview[]>([]);
   const [orders, setOrders] = useState<OrderSnapshot[]>([]);
-  const [visitorAnalytics, setVisitorAnalytics] = useState<VisitorAnalyticsEntry[]>([]);
-  const [visitorAnalyticsError, setVisitorAnalyticsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadVisitorAnalytics = useCallback(
+    (range: VisitorAnalyticsRange): Promise<VisitorAnalyticsSummary> =>
+      getAdminVisitorAnalytics({ data: range }),
+    [],
+  );
 
   const refreshAdminData = useCallback(async () => {
     setLoading(true);
@@ -55,16 +57,6 @@ function AdminPage() {
       setProducts(nextProducts);
       setReviews(nextReviews);
       setOrders(nextOrders);
-      try {
-        setVisitorAnalytics(await getAdminVisitorAnalytics());
-        setVisitorAnalyticsError(null);
-      } catch (analyticsError) {
-        setVisitorAnalyticsError(
-          analyticsError instanceof Error
-            ? analyticsError.message
-            : "Couldn't load visitor analytics.",
-        );
-      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Couldn't load products.";
       if (message === "Unauthorized") {
@@ -113,10 +105,8 @@ function AdminPage() {
         setProducts([]);
         setReviews([]);
         setOrders([]);
-        setVisitorAnalytics([]);
       }}
-      visitorAnalytics={visitorAnalytics}
-      visitorAnalyticsError={visitorAnalyticsError}
+      onLoadVisitorAnalytics={loadVisitorAnalytics}
     />
   );
 }
