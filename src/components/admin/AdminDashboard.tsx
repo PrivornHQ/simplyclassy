@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { categories, formatCedis, orderLineKey, type CategoryId, type Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
+import type { VisitorAnalyticsEntry } from "@/lib/visitor-analytics.functions";
 import {
   MAX_ORDER_ADMIN_NOTES_CHARS,
   MAX_ORDER_STATUS_NOTE_CHARS,
@@ -69,6 +70,8 @@ export function AdminDashboard({
   products,
   reviews,
   orders,
+  visitorAnalytics,
+  visitorAnalyticsError,
   loading,
   error,
   onRefresh,
@@ -77,6 +80,8 @@ export function AdminDashboard({
   products: Product[];
   reviews: CustomerReview[];
   orders: OrderSnapshot[];
+  visitorAnalytics: VisitorAnalyticsEntry[];
+  visitorAnalyticsError: string | null;
   loading: boolean;
   error: string | null;
   onRefresh: () => Promise<void>;
@@ -338,6 +343,68 @@ export function AdminDashboard({
       </header>
 
       <main className="section-shell py-8">
+        <section
+          aria-labelledby="visitor-analytics-title"
+          className="mb-8 rounded-xl border border-border bg-card p-5 shadow-soft"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow">Last 30 days</p>
+              <h2
+                id="visitor-analytics-title"
+                className="mt-1 font-display text-2xl font-semibold text-foreground"
+              >
+                Visitor activity
+              </h2>
+            </div>
+            <p className="max-w-lg text-xs leading-5 text-muted-foreground">
+              Anonymous page views and unique browser tabs per day. No names, IP addresses,
+              referrers, or page URLs are stored.
+            </p>
+          </div>
+          {visitorAnalyticsError ? (
+            <p role="alert" className="mt-4 text-sm text-destructive">
+              {visitorAnalyticsError}
+            </p>
+          ) : visitorAnalytics.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">
+              Visitor analytics are loading. New counts will appear as people browse the site.
+            </p>
+          ) : (
+            <>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <AnalyticsMetric
+                  label="Page views"
+                  value={visitorAnalytics.reduce((total, day) => total + day.pageViews, 0)}
+                />
+                <AnalyticsMetric
+                  label="Browser sessions"
+                  value={visitorAnalytics.reduce((total, day) => total + day.sessions, 0)}
+                />
+              </div>
+              <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
+                {visitorAnalytics.slice(-7).map((day) => (
+                  <li
+                    key={day.date}
+                    className="rounded-md border border-border px-3 py-2 text-sm"
+                  >
+                    <p className="text-xs text-muted-foreground">
+                      {new Intl.DateTimeFormat("en", {
+                        month: "short",
+                        day: "numeric",
+                        timeZone: "UTC",
+                      }).format(new Date(`${day.date}T00:00:00Z`))}
+                    </p>
+                    <p className="mt-1 font-medium text-foreground">
+                      {day.sessions} sessions · {day.pageViews} views
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+
         {mode.type === "form" ? (
           <div className="mx-auto max-w-2xl rounded-xl border border-border bg-card p-5 shadow-soft sm:p-8">
             <ProductForm
@@ -727,6 +794,17 @@ export function AdminDashboard({
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function AnalyticsMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <dl className="rounded-md border border-border p-4">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="mt-1 font-display text-3xl font-semibold text-foreground">
+        {value.toLocaleString("en")}
+      </dd>
+    </dl>
   );
 }
 

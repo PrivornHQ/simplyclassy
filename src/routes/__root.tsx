@@ -6,12 +6,14 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import logoAsset from "../assets/logo.png";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { trackVisitorPageview } from "@/lib/visitor-analytics.functions";
 import { OrderCartProvider } from "@/components/site/OrderCart";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -132,10 +134,29 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <OrderCartProvider>
+        <VisitorTracker />
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
       </OrderCartProvider>
       <Toaster />
     </QueryClientProvider>
   );
+}
+
+function VisitorTracker() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const sessionId = useRef<string | null>(null);
+  const lastPathname = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (pathname === "/admin" || pathname.startsWith("/api/")) return;
+    if (lastPathname.current === pathname) return;
+    lastPathname.current = pathname;
+    sessionId.current ??= crypto.randomUUID();
+    void trackVisitorPageview({ data: { sessionId: sessionId.current } }).catch((error: unknown) => {
+      console.error("Visitor analytics could not be recorded.", error);
+    });
+  }, [pathname]);
+
+  return null;
 }
