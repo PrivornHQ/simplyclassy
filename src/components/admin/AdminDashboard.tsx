@@ -39,13 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  categories,
-  formatCedis,
-  orderLineKey,
-  type CategoryId,
-  type Product,
-} from "@/data/products";
+import { categories, formatCedis, orderLineKey, type CategoryId, type Product } from "@/data/products";
 import type { CustomerReview } from "@/data/reviews";
 import type { VisitorAnalyticsRange, VisitorAnalyticsSummary } from "@/lib/visitor-analytics";
 import {
@@ -143,8 +137,7 @@ export function AdminDashboard({
     }),
   );
   const savingOrders = Object.values(orderSaveStates).some((state) => state.phase === "saving");
-  const orderMutationBusy =
-    savingOrders || deletingOrderId !== null || clearingOrders || signingOut;
+  const orderMutationBusy = savingOrders || deletingOrderId !== null || clearingOrders || signingOut;
 
   const reconcileOrders = useCallback(
     (incoming: OrderSnapshot[]) =>
@@ -198,23 +191,20 @@ export function AdminDashboard({
     form.set("available", values.available ? "true" : "false");
     form.set("badge", values.badge ?? "");
     if (values.imageFile) form.set("image", values.imageFile);
-    form.set(
-      "colors",
-      JSON.stringify({
-        colors: values.colors.map((color) => ({
-          id: color.id,
-          name: color.name.trim(),
-          ...(color.swatch ? { swatch: color.swatch } : {}),
-          images: color.images.map((image) => {
-            if (typeof image.value === "string") return { url: image.value };
-            const uploadKey = `color-image-${color.id}-${image.id}`;
-            form.set(uploadKey, image.value);
-            return { uploadKey };
-          }),
-        })),
-        ...(values.colors.length > 0 ? { defaultColorId: values.defaultColorId } : {}),
-      }),
-    );
+    form.set("colors", JSON.stringify({
+      colors: values.colors.map((color) => ({
+        id: color.id,
+        name: color.name.trim(),
+        ...(color.swatch ? { swatch: color.swatch } : {}),
+        images: color.images.map((image) => {
+          if (typeof image.value === "string") return { url: image.value };
+          const uploadKey = `color-image-${color.id}-${image.id}`;
+          form.set(uploadKey, image.value);
+          return { uploadKey };
+        }),
+      })),
+      ...(values.colors.length > 0 ? { defaultColorId: values.defaultColorId } : {}),
+    }));
 
     setSaving(true);
     try {
@@ -303,9 +293,7 @@ export function AdminDashboard({
       setPendingOrderDelete(null);
       toast.success("Order permanently deleted.");
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Couldn't delete the order. Please try again.",
-      );
+      toast.error(err instanceof Error ? err.message : "Couldn't delete the order. Please try again.");
     } finally {
       setDeletingOrderId(null);
     }
@@ -348,42 +336,9 @@ export function AdminDashboard({
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#f5f6f8] text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-white/90 backdrop-blur-sm">
-        <div className="section-shell flex flex-wrap items-center justify-between gap-3 py-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-              Overview
-            </p>
-            <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">
-              {filter === "all"
-                ? "Products"
-                : filter === "orders"
-                  ? "Orders"
-                  : filter === "reviews"
-                    ? "Reviews"
-                    : filter === "analytics"
-                      ? "Visitor analytics"
-                      : "Catalogue"}
-            </h2>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/">View site</Link>
-            </Button>
-            <Button
-              variant="outline"
-              disabled={signingOut || deletingOrderId !== null || clearingOrders}
-              onClick={() => void signOut()}
-            >
-              {signingOut ? "Signing out..." : "Sign out"}
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col overflow-hidden xl:flex-row">
-        <aside className="sticky top-[73px] z-30 shrink-0 border-b border-border bg-white/90 xl:top-[73px] xl:h-[calc(100vh-73px)] xl:w-72 xl:border-b-0 xl:border-r xl:bg-white/95">
+    <div className="min-h-screen bg-[#f5f6f8] text-foreground">
+      <div className="mx-auto flex max-w-[1600px] flex-col xl:flex-row">
+        <aside className="border-b border-border bg-white/90 xl:min-h-screen xl:w-72 xl:border-b-0 xl:border-r">
           <div className="flex items-center justify-between border-b border-border px-5 py-5 xl:block xl:border-b-0">
             <div>
               <p className="eyebrow">SimplyClassy</p>
@@ -398,7 +353,7 @@ export function AdminDashboard({
             </div>
           </div>
 
-          <nav className="flex flex-wrap gap-2 p-4 xl:flex-col xl:p-5 xl:overflow-y-auto xl:overflow-x-hidden">
+          <nav className="flex flex-wrap gap-2 p-4 xl:flex-col xl:p-5">
             {sideNavItems.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -421,7 +376,40 @@ export function AdminDashboard({
           </nav>
         </aside>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="flex-1">
+          <header className="border-b border-border bg-white/80 backdrop-blur-sm">
+            <div className="section-shell flex flex-wrap items-center justify-between gap-3 py-4">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                  Overview
+                </p>
+                <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">
+                  {filter === "all"
+                    ? "Products"
+                    : filter === "orders"
+                      ? "Orders"
+                      : filter === "reviews"
+                        ? "Reviews"
+                        : filter === "analytics"
+                          ? "Visitor analytics"
+                          : "Catalogue"}
+                </h2>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" asChild>
+                  <Link to="/">View site</Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={signingOut || deletingOrderId !== null || clearingOrders}
+                  onClick={() => void signOut()}
+                >
+                  {signingOut ? "Signing out..." : "Sign out"}
+                </Button>
+              </div>
+            </div>
+          </header>
+
           <main className="section-shell py-8">
             {mode.type === "form" ? (
               <div className="mx-auto max-w-2xl rounded-xl border border-border bg-card p-5 shadow-soft sm:p-8">
@@ -544,10 +532,7 @@ export function AdminDashboard({
                         type="button"
                         variant="destructive"
                         disabled={
-                          orderResults.length === 0 ||
-                          searchingOrders ||
-                          orderMutationBusy ||
-                          loading
+                          orderResults.length === 0 || searchingOrders || orderMutationBusy || loading
                         }
                         onClick={() => setPendingClearOrders([...orderResults])}
                       >
@@ -597,7 +582,7 @@ export function AdminDashboard({
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-foreground">{product.name}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {categories.find((c) => c.id === product.category)?.title} ·{" "}
+                            {categories.find((c) => c.id === product.category)?.title} · {" "}
                             {formatCedis(product.price)}
                             {product.available ? "" : " · Unavailable"}
                           </p>
@@ -759,8 +744,8 @@ export function AdminDashboard({
           <AlertDialogHeader>
             <AlertDialogTitle>Clear these {pendingClearOrders.length} orders?</AlertDialogTitle>
             <AlertDialogDescription>
-              Only the orders shown when you selected Clear will be permanently deleted. Other
-              orders will be kept. This cannot be undone.
+              Only the orders shown when you selected Clear will be permanently deleted. Other orders
+              will be kept. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -891,10 +876,7 @@ function AdminOrderCard({
 
           <ul className="mt-4 grid gap-2">
             {order.items.map((item) => (
-              <li
-                key={orderLineKey(item.productId, item.colorId)}
-                className="flex min-w-0 max-w-full items-center gap-3 text-sm"
-              >
+              <li key={orderLineKey(item.productId, item.colorId)} className="flex min-w-0 max-w-full items-center gap-3 text-sm">
                 <img
                   src={item.productImage}
                   alt=""
@@ -902,11 +884,7 @@ function AdminOrderCard({
                 />
                 <div className="min-w-0 flex-1">
                   <p className="whitespace-normal break-words font-medium">{item.productName}</p>
-                  {item.colorName && (
-                    <p className="break-words text-xs text-muted-foreground">
-                      Color: {item.colorName}
-                    </p>
-                  )}
+                  {item.colorName && <p className="break-words text-xs text-muted-foreground">Color: {item.colorName}</p>}
                   <p className="text-xs text-muted-foreground">
                     {item.quantity} x {formatCedis(item.unitPrice)}
                   </p>
@@ -917,7 +895,10 @@ function AdminOrderCard({
           </ul>
         </div>
 
-        <div className="grid min-w-0 content-start gap-3" aria-busy={saveState?.phase === "saving"}>
+        <div
+          className="grid min-w-0 content-start gap-3"
+          aria-busy={saveState?.phase === "saving"}
+        >
           <div className="space-y-2">
             <Label htmlFor={`order-status-${order.id}`}>Status</Label>
             <Select
@@ -999,3 +980,4 @@ function AdminOrderCard({
     </li>
   );
 }
+
